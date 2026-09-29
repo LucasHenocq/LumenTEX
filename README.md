@@ -50,12 +50,12 @@ Les applications installées vérifient les [releases GitHub](https://github.com
 démarrage, téléchargent la nouvelle version en arrière-plan et proposent « Redémarrer » (sinon elle s'installe à la
 fermeture).
 
-1. Augmenter `version` dans `package.json` (ex. `1.0.1`).
-2. `GH_TOKEN=<jeton GitHub> npm run release:win` : construit l'installeur et crée la release `v<version>` avec
+1. Augmenter `version` dans `package.json` (ex. `1.0.1`), commiter et pousser (`git push`).
+2. Créer et pousser le tag (GitHub refuse de publier une release sur un tag absent) :
+   `git tag v1.0.1 && git push origin v1.0.1`
+3. `GH_TOKEN=$(gh auth token) npm run release:win` : construit l'installeur et publie la release `v<version>` avec
    `Lumen-TeX-Setup-<version>.exe`, son `.blockmap` et `latest.yml` (les trois sont nécessaires aux mises à jour).
-   Le jeton se crée dans GitHub → Settings → Developer settings → Personal access tokens, avec l'accès « Contents » en
-   écriture sur ce dépôt.
-3. Pousser le code (`git push`).
+   Nécessite la [CLI GitHub](https://cli.github.com/) connectée (`gh auth login`).
 
 Variable utile : `LUMEN_USER_DATA=/chemin` sert à utiliser un dossier de réglages séparé.
 
