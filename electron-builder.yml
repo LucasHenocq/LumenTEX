@@ -1,0 +1,41 @@
+appId: com.lumentex.app
+productName: Lumen TeX
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - package.json
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+    - target: zip
+  icon: build/icon.png
+win:
+  icon: build/icon.png
+  target: nsis
+# Installeur Windows : assistant en français, installation pour l'utilisateur (sans droits administrateur)
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Lumen TeX
+  runAfterFinish: true
+  language: "1036"
+  artifactName: Lumen-TeX-Setup-${version}.exe
+# Releases GitHub : installeur + latest.yml, lus par les mises à jour automatiques (electron-updater)
+publish:
+  provider: github
+  owner: LucasHenocq
+  repo: LumenTEX
+  releaseType: release
+fileAssociations:
+  - ext: tex
+    name: Document LaTeX
+    role: Editor
+  - ext: bib
+    name: Bibliographie BibTeX
+    role: Editor
