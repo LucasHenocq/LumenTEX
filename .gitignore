@@ -4,4 +4,4 @@ dist
 .cache
 .DS_Store
 release/
-LATEX/
+/LATEX/
