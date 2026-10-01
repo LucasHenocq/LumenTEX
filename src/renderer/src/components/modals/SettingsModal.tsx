@@ -140,6 +140,7 @@ export default function SettingsModal(): React.JSX.Element {
               {label}
             </button>
           ))}
+          <span className="settings-version">Lumen TeX {__APP_VERSION__}</span>
         </nav>
         <div className="settings-content">
           {section === 'appearance' && (

@@ -7,6 +7,7 @@ import {
   deleteEntry,
   importFiles,
   insertBlock,
+  moveEntry,
   openFile,
   refreshFiles,
   renameEntry,
@@ -41,6 +42,8 @@ function buildTree(files: FileEntry[]): Node[] {
   sort(root)
   return root.children
 }
+
+const parentDir = (p: string): string => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
 
 type Editing = { kind: 'new-file' | 'new-dir'; dir: string } | { kind: 'rename'; path: string } | null
 
@@ -85,6 +88,8 @@ export default function FileTree(): React.JSX.Element {
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   // Dernier élément cliqué dans l'arbre (fichier ou dossier) : cible de la touche Suppr
   const [selected, setSelected] = useState<{ path: string; isDir: boolean } | null>(null)
+  // Élément déplacé par glisser-déposer dans l'arbre (null : fichiers venant de l'Explorateur)
+  const dragged = useRef<string | null>(null)
   const tree = useMemo(() => buildTree(files), [files])
 
   const errorFiles = useMemo(() => {
@@ -194,10 +199,36 @@ export default function FileTree(): React.JSX.Element {
     }
   }
 
+  /** Déplacement interne possible vers dir ? (pas sur place, pas un dossier dans lui-même) */
+  const canMoveTo = (src: string, dir: string): boolean => dir !== parentDir(src) && dir !== src && !dir.startsWith(src + '/')
+
+  const onDragOverDir = (e: React.DragEvent, dir: string): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    const src = dragged.current
+    if (src && !canMoveTo(src, dir)) {
+      e.dataTransfer.dropEffect = 'none'
+      setDropTarget(null)
+      return
+    }
+    e.dataTransfer.dropEffect = src ? 'move' : 'copy'
+    setDropTarget(dir)
+  }
+
   const onDropFiles = async (e: React.DragEvent, dir: string): Promise<void> => {
     e.preventDefault()
     e.stopPropagation()
     setDropTarget(null)
+    const src = dragged.current
+    dragged.current = null
+    if (src) {
+      if (!canMoveTo(src, dir)) return
+      const to = dir ? `${dir}/${src.split('/').pop()}` : src.split('/').pop()!
+      await moveEntry(src, to)
+      if (dir) setExpanded((p) => new Set(p).add(dir))
+      setSelected((s) => (s?.path === src ? { ...s, path: to } : s))
+      return
+    }
     const paths = [...e.dataTransfer.files].map((f) => window.api.pathForFile(f)).filter(Boolean)
     if (paths.length) await importFiles(paths, dir)
   }
@@ -220,14 +251,31 @@ export default function FileTree(): React.JSX.Element {
             setSelected({ path: node.path, isDir: node.isDir })
             void contextMenu(e, node)
           }}
+          draggable={!isEditingThis}
+          onDragStart={(e) => {
+            dragged.current = node.path
+            e.dataTransfer.effectAllowed = 'move'
+            e.dataTransfer.setData('text/plain', node.path)
+          }}
+          onDragEnd={() => {
+            dragged.current = null
+            setDropTarget(null)
+          }}
+          // Déposé sur un dossier : dedans ; sur un fichier : dans son dossier (la racine gère le niveau 0).
+          // dragenter doit être accepté comme dragover, sinon le navigateur refuse le dépôt
+          onDragEnter={(e) => {
+            const dir = node.isDir ? node.path : parentDir(node.path)
+            if (dir) onDragOverDir(e, dir)
+          }}
           onDragOver={(e) => {
-            if (!node.isDir) return
-            e.preventDefault()
-            e.stopPropagation()
-            setDropTarget(node.path)
+            const dir = node.isDir ? node.path : parentDir(node.path)
+            if (dir) onDragOverDir(e, dir)
           }}
           onDragLeave={() => setDropTarget(null)}
-          onDrop={(e) => node.isDir && void onDropFiles(e, node.path)}
+          onDrop={(e) => {
+            const dir = node.isDir ? node.path : parentDir(node.path)
+            if (dir) void onDropFiles(e, dir)
+          }}
           title={node.path}
         >
           <span className={`tree-chevron${node.isDir ? '' : ' hidden'}${isOpen ? ' open' : ''}`}>
@@ -318,10 +366,8 @@ export default function FileTree(): React.JSX.Element {
           void deleteEntry(selected.path, selected.isDir)
         }}
         onContextMenu={(e) => void contextMenu(e, null)}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDropTarget('')
-        }}
+        onDragEnter={(e) => onDragOverDir(e, '')}
+        onDragOver={(e) => onDragOverDir(e, '')}
         onDragLeave={() => setDropTarget(null)}
         onDrop={(e) => void onDropFiles(e, '')}
       >

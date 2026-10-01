@@ -2880,3 +2880,10 @@ button.copilot-gate:hover {
 .tree:focus .tree-row.selected {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+/* Version de l'app, discrète en bas du menu des réglages */
+.settings-version {
+  margin-top: auto;
+  padding: 8px 10px 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+}

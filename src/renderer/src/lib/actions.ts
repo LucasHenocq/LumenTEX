@@ -371,10 +371,18 @@ export async function createFileWith(baseName: string, ext: string, content: str
 }
 
 export async function renameEntry(from: string, toName: string): Promise<void> {
+  if (!validName(toName)) return
+  await moveEntry(from, dirname(from) ? `${dirname(from)}/${toName}` : toName)
+}
+
+/** Renomme ou déplace un fichier ou dossier (chemins relatifs au projet), en suivant onglets, fichier principal et index */
+export async function moveEntry(from: string, to: string): Promise<void> {
   const { root, tabs, mainFile, active } = store.get()
-  if (!root || !validName(toName)) return
-  const to = dirname(from) ? `${dirname(from)}/${toName}` : toName
-  if (to === from) return
+  if (!root || to === from) return
+  if (to.startsWith(from + '/')) {
+    toast('Impossible de déplacer un dossier dans lui-même', 'error')
+    return
+  }
   try {
     for (const t of tabs) if ((t === from || t.startsWith(from + '/')) && isDirty(t)) await saveFile(t)
     await api.rename(root, from, to)

@@ -1,7 +1,7 @@
 {
   "name": "lumen-tex",
   "productName": "Lumen TeX",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Éditeur LaTeX moderne avec aperçu PDF en direct",
   "main": "./out/main/index.js",
   "author": "Lucas Henocq",

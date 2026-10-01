@@ -11,6 +11,8 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
+    // Version de l'app (package.json), affichée discrètement (accueil, réglages)
+    define: { __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? '') },
     plugins: [react()],
     build: { rollupOptions: { input: { index: resolve('src/renderer/index.html') } } }
   }

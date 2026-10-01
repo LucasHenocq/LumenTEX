@@ -80,11 +80,15 @@ export default function Welcome(): React.JSX.Element {
           </div>
         )}
 
-        {tectonic?.found && (
-          <div className="welcome-footer">
-            Moteur : Tectonic {tectonic.version} · <span className="muted">{tectonic.path}</span>
-          </div>
-        )}
+        <div className="welcome-footer">
+          Lumen TeX {__APP_VERSION__}
+          {tectonic?.found && (
+            <>
+              {' '}
+              · Moteur : Tectonic {tectonic.version} · <span className="muted">{tectonic.path}</span>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
