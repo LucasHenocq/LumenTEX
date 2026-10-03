@@ -9,7 +9,7 @@ import * as Y from 'yjs'
 import { docs, getActivePath, hooks, markSaved, reconfigureCollab } from '../editor/setup'
 import type { ChatMessage } from '../../../shared/types'
 import { store, toast, updateSettings, type CollabState } from '../store'
-import { closeProject, closeTab, isOwnWrite, openProject, refreshFiles, saveAll, TEXT_FILE, writeFromSession } from './actions'
+import { closeProject, closeTab, followMove, isOwnWrite, openProject, refreshFiles, saveAll, TEXT_FILE, writeFromSession } from './actions'
 
 // Édition à plusieurs en pair-à-pair. Un document Yjs partagé contient tous les fichiers du projet :
 // textes (Y.Text, fusion caractère par caractère) et autres fichiers (octets, le dernier gagne).
@@ -49,6 +49,10 @@ interface Session {
   peerClients: Map<string, Set<number>>
   /** Fichiers modifiés par la session, à écrire sur le disque */
   pending: Set<string>
+  /** Renommages reçus, à appliquer sur le disque (destination → origine) */
+  renames: Map<string, string>
+  /** Indications de renommage partagées (destination → origine) */
+  moves: Y.Map<string>
   /** Dernier contenu binaire écrit par la session (pour ignorer l'écho du disque) */
   binWrites: Map<string, Uint8Array>
   /** Texte partagé auquel chaque document ouvert est lié */
@@ -276,14 +280,41 @@ function onFilesChanged(events: Y.YEvent<Y.AbstractType<unknown>>[], tr: Y.Trans
   s.timers.write = window.setTimeout(() => void flushWrites(), 250)
 }
 
+/** Renommages faits par un autre participant (destination → origine) : déplacés sur le disque, l'onglet suit */
+function onMoves(e: Y.YMapEvent<string>, tr: Y.Transaction): void {
+  if (!s?.root || tr.origin === DISK || tr.origin === INIT) return
+  e.changes.keys.forEach((c, to) => {
+    const from = c.action !== 'delete' ? e.target.get(to) : undefined
+    if (from) s!.renames.set(to, from)
+  })
+}
+
 async function flushWrites(): Promise<void> {
   if (!s?.root) return
   const sess = s
   const root = sess.root!
-  const keys = [...sess.pending]
+  let keys = [...sess.pending]
   sess.pending.clear()
   // L'état d'abord : si l'app s'arrête ici, la reprise ne réimporte pas ces changements comme les siens
   await persist()
+  // Renommages : déplacer le fichier plutôt que le supprimer et le recréer ; les onglets ouverts suivent
+  const renames = [...sess.renames].filter(([to, from]) => sess.files.get(to) !== undefined && sess.files.get(from) === undefined)
+  sess.renames.clear()
+  const followed: string[] = []
+  for (const [to, from] of renames) {
+    try {
+      if ((await api.stat(`${root}/${from}`)).exists && !(await api.stat(`${root}/${to}`)).exists) await api.rename(root, from, to)
+      if (store.get().tabs.includes(from)) {
+        await followMove(from, to)
+        followed.push(to)
+      }
+      keys = keys.filter((k) => k !== from)
+    } catch {
+      /* déplacement impossible : suppression et recréation ci-dessous */
+    }
+  }
+  // Onglet déplacé : il reprend le texte partagé de sa nouvelle place (modifications faites pendant le renommage)
+  if (followed.length) reconfigureCollab((p) => followed.includes(p))
   let removed = false
   for (const key of keys) {
     const v = sess.files.get(key)
@@ -304,7 +335,12 @@ async function flushWrites(): Promise<void> {
       /* fichier verrouillé ou chemin invalide : réessayé au prochain changement */
     }
   }
-  if (removed || keys.some((k) => !store.get().files.some((f) => f.path === k))) await refreshFiles()
+  // Dossiers vidés par ces déplacements et suppressions : retirés (seulement s'ils sont vides), du plus profond au plus haut
+  const emptied = new Set<string>()
+  for (const p of [...renames.map(([, from]) => from), ...keys.filter((k) => sess.files.get(k) === undefined)])
+    for (let d = p; d.includes('/'); ) emptied.add((d = d.slice(0, d.lastIndexOf('/'))))
+  for (const d of [...emptied].sort((a, b) => b.split('/').length - a.split('/').length)) await api.removeEmptyDir(root, d)
+  if (removed || renames.length || emptied.size || keys.some((k) => !store.get().files.some((f) => f.path === k))) await refreshFiles()
   syncBindings()
 }
 
@@ -319,29 +355,81 @@ function applyDiff(t: Y.Text, next: string): void {
   if (next.length - a - b > 0) t.insert(a, next.slice(a, next.length - b))
 }
 
+/** Fichiers trop volumineux pour la session : restent sur l'ordinateur, la personne qui les a en est prévenue */
+const mb = (n: number): string => `${Math.max(1, Math.round(n / 1e6))} Mo`
+function setTooBig(path: string, size: number | null, announce = true): void {
+  const list = store.get().collab.tooBig
+  const known = list.some((f) => f.path === path)
+  if (size === null) {
+    if (known) setCollab({ tooBig: list.filter((f) => f.path !== path) })
+    return
+  }
+  if (known) return
+  setCollab({ tooBig: [...list, { path, size }] })
+  if (announce)
+    toast(`« ${path.split('/').pop()} » (${mb(size)}) n’est pas partagé : les fichiers de plus de 15 Mo restent sur ton ordinateur.`, 'info', undefined, 8000)
+}
+
 const sameBytes = (x: Uint8Array, y: Uint8Array): boolean => x.length === y.length && x.every((v, i) => v === y[i])
 
-/** Lit un fichier du disque et le reporte dans la session s'il diffère */
-async function importFile(path: string): Promise<void> {
-  if (!s?.root) return
+type Change = { path: string; text?: string; bin?: Uint8Array }
+
+/** Fichier du disque à reporter dans la session, ou null s'il n'a pas changé (ou est trop volumineux) */
+async function readChange(path: string): Promise<Change | null> {
+  if (!s?.root) return null
   const sess = s
-  const root = sess.root!
   if (TEXT_FILE.test(path)) {
-    const text = await api.read(root, path)
+    const text = await api.read(sess.root!, path)
     // Écho de nos propres écritures (éventuellement déjà dépassées par la frappe) : ignoré
-    if (isOwnWrite(path, text)) return
+    if (isOwnWrite(path, text)) return null
     const cur = sess.files.get(path)
-    if (cur instanceof Y.Text) {
-      if (cur.toString() !== text) sess.doc.transact(() => applyDiff(cur, text), DISK)
-    } else sess.doc.transact(() => sess.files.set(path, new Y.Text(text)), DISK)
-  } else {
-    const bin = await api.readBinary(root, path)
-    if (bin.length > MAX_BINARY) return
-    const own = sess.binWrites.get(path)
-    if (own && sameBytes(own, bin)) return
-    const cur = sess.files.get(path)
-    if (!(cur instanceof Uint8Array) || !sameBytes(cur, bin)) sess.doc.transact(() => sess.files.set(path, bin), DISK)
+    return cur instanceof Y.Text && cur.toString() === text ? null : { path, text }
   }
+  const bin = await api.readBinary(sess.root!, path)
+  if (bin.length > MAX_BINARY) {
+    setTooBig(path, bin.length)
+    return null
+  }
+  setTooBig(path, null)
+  const own = sess.binWrites.get(path)
+  if (own && sameBytes(own, bin)) return null
+  const cur = sess.files.get(path)
+  return cur instanceof Uint8Array && sameBytes(cur, bin) ? null : { path, bin }
+}
+
+/**
+ * Un lot de changements du disque en une seule opération (reçue d'un bloc par les autres).
+ * Fichier nouveau au contenu identique à un fichier disparu du même lot : renommage, signalé aux autres
+ */
+function applyDiskBatch(removed: string[], changes: Change[]): void {
+  if (!s || (!removed.length && !changes.length)) return
+  const { doc, files, moves } = s
+  const gone = new Set(removed)
+  const renamed: [string, string][] = []
+  for (const c of changes) {
+    if (files.has(c.path)) continue
+    for (const r of gone) {
+      const old = files.get(r)
+      const same =
+        c.text !== undefined ? old instanceof Y.Text && old.toString() === c.text : old instanceof Uint8Array && !!c.bin && sameBytes(old, c.bin)
+      if (same) {
+        renamed.push([c.path, r])
+        gone.delete(r)
+        break
+      }
+    }
+  }
+  doc.transact(() => {
+    for (const k of new Set(removed)) files.delete(k)
+    for (const c of changes) {
+      const cur = files.get(c.path)
+      if (c.text !== undefined) {
+        if (cur instanceof Y.Text) applyDiff(cur, c.text)
+        else files.set(c.path, new Y.Text(c.text))
+      } else if (c.bin) files.set(c.path, c.bin)
+    }
+    for (const [to, from] of renamed) moves.set(to, from)
+  }, DISK)
 }
 
 /** Fichiers modifiés sur le disque (surveillance du dossier) → session */
@@ -349,30 +437,48 @@ export async function collabDiskChanged(paths: string[]): Promise<void> {
   if (!s?.root || s.awaitSync) return
   const sess = s
   const root = sess.root!
+  const removed: string[] = []
+  const changes: Change[] = []
   for (const p of paths) {
     try {
       const st = await api.stat(`${root}/${p}`)
       if (!st.exists) {
-        const gone = [...sess.files.keys()].filter((k) => k === p || k.startsWith(p + '/'))
-        if (gone.length) sess.doc.transact(() => gone.forEach((k) => sess.files.delete(k)), DISK)
+        store.get().collab.tooBig.filter((f) => f.path === p || f.path.startsWith(p + '/')).forEach((f) => setTooBig(f.path, null))
+        removed.push(...[...sess.files.keys()].filter((k) => k === p || k.startsWith(p + '/')))
       } else if (st.isDir) {
-        for (const f of await api.list(root)) if (!f.isDir && f.path.startsWith(p + '/')) await importFile(f.path)
-      } else await importFile(p)
+        for (const f of await api.list(root)) {
+          if (f.isDir || !f.path.startsWith(p + '/')) continue
+          const c = await readChange(f.path)
+          if (c) changes.push(c)
+        }
+      } else {
+        const c = await readChange(p)
+        if (c) changes.push(c)
+      }
     } catch {
       /* fichier en cours d'écriture : le prochain événement le reprendra */
     }
   }
+  if (s !== sess) return
+  applyDiskBatch(removed, changes)
   syncBindings()
 }
 
-/** Tout le dossier → session : fichiers nouveaux, modifiés ou supprimés hors session */
+/** Tout le dossier → session : fichiers nouveaux, modifiés, renommés ou supprimés hors session */
 async function importAll(): Promise<void> {
   if (!s?.root) return
   const sess = s
   const onDisk = (await api.list(sess.root!)).filter((f) => !f.isDir).map((f) => f.path)
-  for (const p of onDisk) await importFile(p).catch(() => {})
-  const missing = [...sess.files.keys()].filter((k) => !onDisk.includes(k))
-  if (missing.length) sess.doc.transact(() => missing.forEach((k) => sess.files.delete(k)), DISK)
+  const changes: Change[] = []
+  for (const p of onDisk) {
+    const c = await readChange(p).catch(() => null)
+    if (c) changes.push(c)
+  }
+  if (s !== sess) return
+  applyDiskBatch(
+    [...sess.files.keys()].filter((k) => !onDisk.includes(k)),
+    changes
+  )
   syncBindings()
 }
 
@@ -407,6 +513,8 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
     awareness,
     peerClients: new Map(),
     pending: new Set(),
+    renames: new Map(),
+    moves: doc.getMap<string>('moves'),
     binWrites: new Map(),
     bound: new Map(),
     awaitSync,
@@ -445,12 +553,14 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
   doc.on('update', onUpdate)
   awareness.on('update', onAwareness)
   sess.files.observeDeep(onFilesChanged)
+  sess.moves.observe(onMoves)
   chat.observe(onChat)
   let lastActive = getActivePath()
   sess.offs.push(
     () => doc.off('update', onUpdate),
     () => awareness.off('update', onAwareness),
     () => sess.files.unobserveDeep(onFilesChanged),
+    () => sess.moves.unobserve(onMoves),
     () => chat.unobserve(onChat),
     api.onCollabPeer((id, joined) => (joined ? greet(id) : forget(id))),
     api.onCollabData(receive),
@@ -461,7 +571,7 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
       if (a !== lastActive) awareness.setLocalStateField('file', (lastActive = a))
     })
   )
-  setCollab({ active: true, code, role, joining: !root, people: [], chat: chat.toArray(), events: [], net: { state: 'starting', peers: 0 } })
+  setCollab({ active: true, code, role, joining: !root, people: [], chat: chat.toArray(), events: [], tooBig: [], net: { state: 'starting', peers: 0 } })
   await api.collabStart(code)
 }
 
@@ -506,6 +616,7 @@ export async function shareProject(): Promise<void> {
   const code = await api.collabNewCode()
   const doc = new Y.Doc()
   const entries: [string, Entry][] = []
+  const tooBig: { path: string; size: number }[] = []
   for (const f of await api.list(root)) {
     if (f.isDir) continue
     try {
@@ -513,6 +624,7 @@ export async function shareProject(): Promise<void> {
       else {
         const bin = await api.readBinary(root, f.path)
         if (bin.length <= MAX_BINARY) entries.push([f.path, bin])
+        else tooBig.push({ path: f.path, size: bin.length })
       }
     } catch {
       /* illisible : non partagé */
@@ -527,6 +639,17 @@ export async function shareProject(): Promise<void> {
   await begin(code, root, doc, 'host', false)
   await persist()
   reconfigureCollab()
+  if (tooBig.length) {
+    setCollab({ tooBig })
+    toast(
+      tooBig.length === 1
+        ? `« ${tooBig[0].path.split('/').pop()} » (${mb(tooBig[0].size)}) n’est pas partagé : les fichiers de plus de 15 Mo restent sur ton ordinateur.`
+        : `${tooBig.length} fichiers de plus de 15 Mo ne sont pas partagés (liste dans la fenêtre de partage).`,
+      'info',
+      undefined,
+      8000
+    )
+  }
 }
 
 /** Rejoint une session : le projet sera créé dans parentDir à l'arrivée de son contenu */
@@ -578,6 +701,6 @@ export async function stopSession({ forget }: { forget: boolean }): Promise<void
     await updateSettings({ collabSessions: sessions })
     await api.collabClearState(sess.root)
   }
-  setCollab({ active: false, code: '', joining: false, people: [], chat: [], events: [], net: { state: 'off', peers: 0 } })
+  setCollab({ active: false, code: '', joining: false, people: [], chat: [], events: [], tooBig: [], net: { state: 'off', peers: 0 } })
   if (store.get().panel === 'chat') store.set({ panel: 'files' })
 }

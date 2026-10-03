@@ -405,20 +405,26 @@ export async function moveEntry(from: string, to: string): Promise<void> {
   try {
     for (const t of tabs) if ((t === from || t.startsWith(from + '/')) && isDirty(t)) await saveFile(t)
     await api.rename(root, from, to)
-    const mapPath = (p: string): string => (p === from ? to : p.startsWith(from + '/') ? to + p.slice(from.length) : p)
-    for (const t of tabs) if (t !== mapPath(t)) renameDoc(t, mapPath(t))
-    for (const [p, text] of [...contents]) {
-      if (p !== mapPath(p)) {
-        removeContent(p)
-        updateContent(mapPath(p), text)
-      }
-    }
-    store.set({ tabs: tabs.map(mapPath), mainFile: mainFile ? mapPath(mainFile) : null, active: active ? mapPath(active) : null })
-    await refreshFiles()
-    persistTabs()
+    await followMove(from, to)
   } catch (e) {
     toast((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), 'error')
   }
+}
+
+/** Fichier ou dossier déplacé (ici ou par un autre participant) : onglets, fichier principal et index suivent */
+export async function followMove(from: string, to: string): Promise<void> {
+  const { tabs, mainFile, active } = store.get()
+  const mapPath = (p: string): string => (p === from ? to : p.startsWith(from + '/') ? to + p.slice(from.length) : p)
+  for (const t of tabs) if (t !== mapPath(t)) renameDoc(t, mapPath(t))
+  for (const [p, text] of [...contents]) {
+    if (p !== mapPath(p)) {
+      removeContent(p)
+      updateContent(mapPath(p), text)
+    }
+  }
+  store.set({ tabs: tabs.map(mapPath), mainFile: mainFile ? mapPath(mainFile) : null, active: active ? mapPath(active) : null })
+  await refreshFiles()
+  persistTabs()
 }
 
 export async function deleteEntry(path: string, isDir: boolean): Promise<void> {

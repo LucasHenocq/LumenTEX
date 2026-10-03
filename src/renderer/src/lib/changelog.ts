@@ -13,7 +13,12 @@ export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
       '« Ma position » joint au message le fichier, la ligne et la sélection : un clic sur la carte y emmène.',
       'Notifications Windows des nouveaux messages quand Lumen TeX est en arrière-plan (cloche pour les couper).',
       'Partage plus robuste : si deux personnes ne peuvent pas se joindre directement, elles se reçoivent par l’intermédiaire d’une troisième.',
-      'Lumen TeX réduit ou caché reste bien présent pour les autres participants.'
+      'Lumen TeX réduit ou caché reste bien présent pour les autres participants.',
+      'Partage : quand quelqu’un renomme ou déplace un fichier ou un dossier, il est déplacé chez chacun (plus de passage par la Corbeille) et l’onglet ouvert suit.',
+      'Partage : les fichiers de plus de 15 Mo ne sont plus ignorés en silence (message et liste « Non partagés » dans la fenêtre de partage).',
+      'Partage : connexion plus rapide quand plusieurs personnes ouvrent le projet en même temps, ou après un plantage.',
+      'La fenêtre ne s’ouvre plus sur un écran débranché : elle revient sur l’écran principal.',
+      'Les mises à jour sont aussi recherchées quand Lumen TeX reste ouvert longtemps (toutes les 4 heures).'
     ]
   },
   {

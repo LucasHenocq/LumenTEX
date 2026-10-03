@@ -38,6 +38,8 @@ export interface CollabState {
   chat: ChatMessage[]
   /** Arrivées et départs, affichés localement dans la discussion (non conservés) */
   events: { ts: number; text: string }[]
+  /** Fichiers de ce projet trop volumineux pour être partagés (restent sur l'ordinateur) */
+  tooBig: { path: string; size: number }[]
 }
 
 export type CompileStatus = 'idle' | 'running' | 'success' | 'warning' | 'error'
@@ -128,7 +130,7 @@ export const store = createStore<AppState>({
   pdfPages: 0,
   pdfScale: 1,
   resolvedDark: false,
-  collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [] }
+  collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [] }
 })
 
 export const useApp = store.use

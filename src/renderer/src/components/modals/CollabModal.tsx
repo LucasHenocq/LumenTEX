@@ -192,6 +192,16 @@ function InSession({ c }: { c: CollabState }): React.JSX.Element {
           </div>
         ))}
       </div>
+      {c.tooBig.length > 0 && (
+        <div className="collab-toobig">
+          <strong>Non partagés (plus de 15 Mo, restent sur ton ordinateur) :</strong>
+          {c.tooBig.map((f) => (
+            <span key={f.path}>
+              {f.path} <small>({Math.max(1, Math.round(f.size / 1e6))} Mo)</small>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="collab-actions">
         <button className="btn ghost" onClick={() => void leave()}>
           <LogOut size={14} /> Quitter la session

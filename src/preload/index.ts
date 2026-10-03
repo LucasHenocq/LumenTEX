@@ -54,6 +54,7 @@ const api = {
   read: (root: string, rel: string): Promise<string> => invoke('fs:read', root, rel),
   readBinary: (root: string, rel: string): Promise<Uint8Array> => invoke('fs:readBinary', root, rel),
   readAllText: (root: string): Promise<Record<string, string>> => invoke('fs:readAllText', root),
+  removeEmptyDir: (root: string, rel: string): Promise<boolean> => invoke('fs:remove-empty-dir', root, rel),
   writeBinary: (root: string, rel: string, data: Uint8Array): Promise<boolean> => invoke('fs:write-binary', root, rel, data),
   write: (root: string, rel: string, content: string): Promise<boolean> => invoke('fs:write', root, rel, content),
   create: (root: string, rel: string, isDir: boolean, content?: string): Promise<boolean> =>

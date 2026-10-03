@@ -32,7 +32,7 @@ interface Conn {
 type Emit = (channel: string, ...args: unknown[]) => void
 
 let swarm: {
-  join(topic: Buffer, o: object): { flushed(): Promise<void> }
+  join(topic: Buffer, o: object): { flushed(): Promise<void>; refresh(): Promise<void> }
   on(e: 'connection', cb: (c: Conn) => void): void
   destroy(): Promise<void>
   dht?: { table?: { size: number } }
@@ -103,7 +103,9 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
   // Pour les tests : réseau de démarrage alternatif (ex. « 127.0.0.1:1 » pour simuler un réseau injoignable)
   const bootstrap = process.env.LUMEN_DHT_BOOTSTRAP?.split(',').filter(Boolean)
   try {
-    swarm = new Hyperswarm(bootstrap ? { bootstrap } : {})
+    // Plus de tentatives simultanées (3 par défaut) : après un plantage, des annonces périmées de l'instance
+    // disparue restent un moment sur le réseau et ne doivent pas monopoliser les essais au détriment des vrais pairs
+    swarm = new Hyperswarm({ maxParallel: 10, ...(bootstrap ? { bootstrap } : {}) })
   } catch (e) {
     log('création du swarm impossible', e)
     setStatus({ state: 'unavailable' })
@@ -163,7 +165,8 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
 
   setStatus({ state: 'searching' })
   log('recherche', topic.toString('hex').slice(0, 12))
-  const flushed = s.join(topic, { server: true, client: true }).flushed()
+  const discovery = s.join(topic, { server: true, client: true })
+  const flushed = discovery.flushed()
   // Aucun nœud du réseau connu : hors ligne, pare-feu ou UDP bloqué (l'annonce « réussit » alors à vide).
   // Vérifié régulièrement : l'état revient de lui-même quand le réseau répond à nouveau
   const reachable = (): boolean => (s.dht?.table?.size ?? 1) > 0
@@ -173,7 +176,16 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
     if (!reachable()) status.state !== 'network' && setStatus({ state: 'network' })
     else if (announced && status.state !== 'online') setStatus({ state: 'online' })
   }
-  watchdog = setInterval(check, 5000)
+  let ticks = 0
+  watchdog = setInterval(() => {
+    check()
+    // Seul : nouvelle recherche toutes les 30 s (Hyperswarm n'en refait qu'au bout de 10 min ; deux participants
+    // arrivés en même temps se manquent sinon, chacun ayant cherché avant l'annonce de l'autre)
+    if (++ticks % 6 === 0 && announced && !peers.size && gen === generation) discovery.refresh().catch((e) => log('recherche', e))
+    // Diagnostic (LUMEN_COLLAB_DEBUG) : pairs découverts sur le réseau, connexions en cours, nœuds connus
+    const sw = s as unknown as { peers?: Map<unknown, unknown>; connecting?: number; connections?: Set<unknown> }
+    if (process.env.LUMEN_COLLAB_DEBUG) log('diag', `decouverts=${sw.peers?.size} en_cours=${sw.connecting} connexions=${sw.connections?.size} noeuds=${s.dht?.table?.size}`)
+  }, 5000)
   // Réseau muet : l'annonce peut aussi ne jamais aboutir ; Hyperswarm continue d'essayer
   const slow = setTimeout(() => gen === generation && status.state === 'searching' && setStatus({ state: 'network' }), 20000)
   flushed

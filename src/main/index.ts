@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  screen,
   shell,
   type MenuItemConstructorOptions
 } from 'electron'
@@ -105,13 +106,28 @@ function watchProject(root: string | null): void {
 // Fenêtre
 // ---------------------------------------------------------------------------
 
+type Bounds = { x: number; y: number; width: number; height: number }
+
+/** Barre de titre sur un écran branché (au moins 120 px visibles) : sinon la fenêtre serait inatteignable */
+function onScreen(b: Bounds): boolean {
+  return screen.getAllDisplays().some(({ workArea: w }) => {
+    const visibleWidth = Math.min(b.x + b.width, w.x + w.width) - Math.max(b.x, w.x)
+    const visibleTitle = Math.min(b.y + 40, w.y + w.height) - Math.max(b.y, w.y)
+    return visibleWidth >= 120 && visibleTitle >= 20
+  })
+}
+
+/** Position mémorisée si elle est sur un écran branché ; sinon centrée sur l'écran principal (écran débranché) */
+function restoredBounds(): Partial<Bounds> {
+  const b = getSettings().windowBounds
+  if (b && onScreen(b)) return b
+  const work = screen.getPrimaryDisplay().workArea
+  return { width: Math.min(b?.width ?? 1480, work.width), height: Math.min(b?.height ?? 920, work.height) }
+}
+
 function createWindow(): void {
-  const bounds = getSettings().windowBounds
   win = new BrowserWindow({
-    width: bounds?.width ?? 1480,
-    height: bounds?.height ?? 920,
-    x: bounds?.x,
-    y: bounds?.y,
+    ...restoredBounds(),
     minWidth: 960,
     minHeight: 600,
     show: false,
@@ -136,6 +152,19 @@ function createWindow(): void {
   }
   win.on('resized', saveBounds)
   win.on('moved', saveBounds)
+  // Écran débranché pendant l'utilisation : la fenêtre revient sur l'écran principal
+  const rescue = (): void => {
+    if (!win || win.isMinimized() || onScreen(win.getBounds())) return
+    const work = screen.getPrimaryDisplay().workArea
+    win.setBounds({ ...work, width: Math.min(win.getBounds().width, work.width), height: Math.min(win.getBounds().height, work.height) })
+    win.center()
+  }
+  screen.on('display-removed', rescue)
+  screen.on('display-metrics-changed', rescue)
+  win.on('closed', () => {
+    screen.off('display-removed', rescue)
+    screen.off('display-metrics-changed', rescue)
+  })
 
   win.on('close', (e) => {
     if (rendererDirty && !allowClose) {
@@ -456,6 +485,15 @@ function registerIpc(): void {
     }
     return out
   })
+  // Dossier retiré seulement s'il est vide (après un déplacement ou une suppression reçus d'une session partagée)
+  ipcMain.handle('fs:remove-empty-dir', (_e, root: string, rel: string) => {
+    try {
+      fs.rmdirSync(inside(root, rel))
+      return true
+    } catch {
+      return false
+    }
+  })
   ipcMain.handle('fs:write-binary', (_e, root: string, rel: string, data: Uint8Array) => {
     const abs = inside(root, rel)
     fs.mkdirSync(path.dirname(abs), { recursive: true })
@@ -741,10 +779,19 @@ void app.whenReady().then(() => {
   // Mises à jour depuis les releases GitHub (app installée seulement) : téléchargée en arrière-plan,
   // installée au prochain « Redémarrer » ou à la fermeture
   if (app.isPackaged) {
-    autoUpdater.on('update-downloaded', (info) => send('app:update-ready', info.version))
+    // Une seule annonce par version téléchargée (les vérifications suivantes la retrouvent déjà prête)
+    let announced = ''
+    autoUpdater.on('update-downloaded', (info) => {
+      if (info.version === announced) return
+      announced = info.version
+      send('app:update-ready', info.version)
+    })
     // Copie non installée (dossier win-unpacked), hors ligne, GitHub injoignable : pas de mise à jour, sans planter
     autoUpdater.on('error', () => {})
-    autoUpdater.checkForUpdates().catch(() => {})
+    const check = (): void => void autoUpdater.checkForUpdates().catch(() => {})
+    check()
+    // App laissée ouverte plusieurs jours : nouvelle vérification toutes les 4 heures (LUMEN_UPDATE_EVERY_MS : tests)
+    setInterval(check, Number(process.env.LUMEN_UPDATE_EVERY_MS) || 4 * 60 * 60 * 1000)
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -759,8 +806,16 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-app.on('before-quit', () => {
-  void stopCollab()
+let collabStopped = false
+app.on('before-quit', (e) => {
+  // Session partagée : retirer son annonce du réseau avant de quitter (sinon les autres essaient en vain de
+  // joindre cette instance disparue et mettent plus longtemps à se trouver). Au plus 2,5 s
+  if (!collabStopped && collabStatus().state !== 'off') {
+    e.preventDefault()
+    collabStopped = true
+    void Promise.race([stopCollab(), new Promise((r) => setTimeout(r, 2500))]).finally(() => app.quit())
+    return
+  }
   cancelCompile() // sinon Tectonic orphelin garde le cache verrouillé
   stopConvert()
   discardAll()
