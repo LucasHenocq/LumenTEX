@@ -2,16 +2,31 @@ import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2 } from 'lucide-
 import { store, useApp } from '../store'
 import { kb } from '../lib/keys'
 import { collabMessage } from './modals/CollabModal'
+import { useUnreadChat } from './ActivityBar'
+import { openChat } from '../lib/collab'
 
 /** Session partagée : pastille cliquable (connectés, recherche, hors ligne) */
 function CollabIndicator(): React.JSX.Element | null {
   const c = useApp((s) => s.collab)
+  const unread = useUnreadChat()
   if (!c.active || c.joining) return null
   const m = collabMessage(c)
   const label = m.tone === 'warn' ? (c.net.state === 'network' ? 'Hors ligne · fusion au retour' : 'Partage indisponible') : m.tone === 'ok' ? m.title : 'Partagé'
   return (
     <button className={`sb-btn sb-collab ${m.tone}`} title={m.title} onClick={() => store.set({ modal: { type: 'collab' } })}>
       <span className={`collab-dot ${m.tone}`} /> {label}
+      {unread > 0 && (
+        <span
+          className="sb-chat-unread"
+          title="Messages non lus"
+          onClick={(e) => {
+            e.stopPropagation()
+            openChat()
+          }}
+        >
+          · 💬 {unread}
+        </span>
+      )}
     </button>
   )
 }

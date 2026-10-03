@@ -6,6 +6,17 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.2.0',
+    date: '2026-10-03',
+    items: [
+      'Discussion de session : un onglet 💬 dans la barre de gauche pendant le travail à plusieurs, avec le nom et la couleur de chacun, « … écrit » et l’historique conservé dans le projet.',
+      '« Ma position » joint au message le fichier, la ligne et la sélection : un clic sur la carte y emmène.',
+      'Notifications Windows des nouveaux messages quand Lumen TeX est en arrière-plan (cloche pour les couper).',
+      'Partage plus robuste : si deux personnes ne peuvent pas se joindre directement, elles se reçoivent par l’intermédiaire d’une troisième.',
+      'Lumen TeX réduit ou caché reste bien présent pour les autres participants.'
+    ]
+  },
+  {
     version: '1.1.1',
     date: '2026-10-03',
     items: [

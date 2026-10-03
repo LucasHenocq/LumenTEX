@@ -27,6 +27,8 @@ import { collabStatus, newCode, normalizeCode, sendCollab, startCollab, stopColl
 import { discard, discardAll, prepareData, prepareFile, runConvert, stopConvert } from './convert'
 
 app.setName('Lumen TeX')
+// Windows : identité de l'app pour ses notifications (même identifiant que l'installeur)
+if (process.platform === 'win32') app.setAppUserModelId('com.lumentex.app')
 if (process.env.LUMEN_USER_DATA) app.setPath('userData', process.env.LUMEN_USER_DATA)
 
 let win: BrowserWindow | null = null
@@ -120,7 +122,10 @@ function createWindow(): void {
       preload: path.join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
-      spellcheck: true
+      spellcheck: true,
+      // Session partagée : présence, écriture sur disque des modifications reçues et notifications doivent
+      // continuer à l'heure quand la fenêtre est réduite ou cachée (sinon les autres te croient parti)
+      backgroundThrottling: false
     }
   })
 
@@ -403,6 +408,12 @@ function registerIpc(): void {
   })
   // Installation silencieuse (sans l'assistant) puis relance de l'app
   ipcMain.handle('app:install-update', () => autoUpdater.quitAndInstall(true, true))
+  ipcMain.on('app:focus', () => {
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  })
   ipcMain.handle('app:pending-open', () => {
     const p = pendingOpenPath
     pendingOpenPath = null
@@ -670,7 +681,7 @@ function registerIpc(): void {
   ipcMain.handle('collab:start', (_e, code: string) => startCollab(code, send))
   ipcMain.handle('collab:stop', () => stopCollab())
   ipcMain.handle('collab:status', () => collabStatus())
-  ipcMain.on('collab:send', (_e, data: Uint8Array, to?: string) => sendCollab(data, to))
+  ipcMain.on('collab:send', (_e, data: Uint8Array, to?: string, except?: string) => sendCollab(data, to, except))
   ipcMain.handle('collab:load-state', (_e, root: string) => {
     try {
       return new Uint8Array(fs.readFileSync(collabState(root)))

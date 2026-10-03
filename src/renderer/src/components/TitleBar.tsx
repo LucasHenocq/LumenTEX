@@ -17,6 +17,7 @@ import { cancelCompile, compile, exportPdf, setMainFile } from '../lib/actions'
 import { contents } from '../lib/projectIndex'
 import { store, updateSettings, useApp } from '../store'
 import { kb } from '../lib/keys'
+import { presentCount } from './modals/CollabModal'
 
 /** Partager le projet / session en cours (avec le nombre de personnes connectées) */
 function CollabButton(): React.JSX.Element {
@@ -29,7 +30,7 @@ function CollabButton(): React.JSX.Element {
       onClick={() => store.set({ modal: { type: 'collab' } })}
     >
       <Users size={16} />
-      {on && c.net.peers > 0 && <span className="collab-count">{c.net.peers}</span>}
+      {on && presentCount(c) > 0 && <span className="collab-count">{presentCount(c)}</span>}
     </button>
   )
 }

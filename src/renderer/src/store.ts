@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
-import type { CollabNetStatus, CompileResult, Diagnostic, FileEntry, Settings, TectonicStatus } from '../../shared/types'
+import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, FileEntry, Settings, TectonicStatus } from '../../shared/types'
 
-export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search'
+export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat'
 
 export type Modal =
   | { type: 'new-project' }
@@ -32,8 +32,12 @@ export interface CollabState {
   net: CollabNetStatus
   /** Invité en attente du contenu de la session (avant la création du dossier) */
   joining: boolean
-  /** Autres participants, d'après leur présence (nom, couleur, fichier ouvert) */
-  people: { id: number; name: string; color: string; file: string | null }[]
+  /** Autres participants, d'après leur présence (nom, couleur, fichier ouvert, en train d'écrire) */
+  people: { id: number; name: string; color: string; file: string | null; typing: boolean }[]
+  /** Discussion de la session (ordre partagé par tous) */
+  chat: ChatMessage[]
+  /** Arrivées et départs, affichés localement dans la discussion (non conservés) */
+  events: { ts: number; text: string }[]
 }
 
 export type CompileStatus = 'idle' | 'running' | 'success' | 'warning' | 'error'
@@ -124,7 +128,7 @@ export const store = createStore<AppState>({
   pdfPages: 0,
   pdfScale: 1,
   resolvedDark: false,
-  collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [] }
+  collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [] }
 })
 
 export const useApp = store.use

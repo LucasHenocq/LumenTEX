@@ -7,7 +7,8 @@ import * as awarenessProtocol from 'y-protocols/awareness'
 import * as syncProtocol from 'y-protocols/sync'
 import * as Y from 'yjs'
 import { docs, getActivePath, hooks, markSaved, reconfigureCollab } from '../editor/setup'
-import { store, updateSettings, type CollabState } from '../store'
+import type { ChatMessage } from '../../../shared/types'
+import { store, toast, updateSettings, type CollabState } from '../store'
 import { closeProject, closeTab, isOwnWrite, openProject, refreshFiles, saveAll, TEXT_FILE, writeFromSession } from './actions'
 
 // Édition à plusieurs en pair-à-pair. Un document Yjs partagé contient tous les fichiers du projet :
@@ -19,8 +20,16 @@ import { closeProject, closeTab, isOwnWrite, openProject, refreshFiles, saveAll,
 const api = window.api
 const MSG_SYNC = 0
 const MSG_AWARENESS = 1
-/** Origines des transactions : reçu d'un autre participant, lu sur le disque, état initial */
-const REMOTE = 'remote'
+/**
+ * Origines des transactions : reçu d'un autre participant ({ peer }), lu sur le disque, état initial.
+ * Tout ce qui est reçu est retransmis aux autres participants (sauf à l'expéditeur) : si deux personnes
+ * ne peuvent pas se joindre directement, elles se reçoivent par l'intermédiaire d'une troisième
+ */
+type Remote = { peer: string }
+const remotePeer = (origin: unknown): string | null =>
+  origin && typeof origin === 'object' && 'peer' in origin ? (origin as Remote).peer : null
+/** Retrait local de la présence d'un pair parti (à ne pas retransmettre) */
+const FORGET = 'forget'
 const DISK = 'disk'
 const INIT = 'init'
 const MAX_BINARY = 15 * 1024 * 1024
@@ -47,8 +56,10 @@ interface Session {
   /** Pas d'état local fiable : attendre un autre participant avant d'importer le disque */
   awaitSync: boolean
   parentDir: string
-  timers: { write?: number; save?: number }
+  timers: { write?: number; save?: number; typing?: number; read?: number }
   offs: (() => void)[]
+  /** Début de session : l'historique reçu à l'arrivée ne déclenche ni notification ni « a rejoint » */
+  startedAt: number
 }
 
 let s: Session | null = null
@@ -91,8 +102,8 @@ function syncBindings(): void {
 // Protocole (messages Yjs sur le réseau pair-à-pair)
 // ---------------------------------------------------------------------------
 
-function send(enc: encoding.Encoder, to?: string): void {
-  api.collabSend(encoding.toUint8Array(enc), to)
+function send(enc: encoding.Encoder, to?: string, except?: string | null): void {
+  api.collabSend(encoding.toUint8Array(enc), to, except ?? undefined)
 }
 
 function greet(peer: string): void {
@@ -103,15 +114,19 @@ function greet(peer: string): void {
   send(sync, peer)
   const aw = encoding.createEncoder()
   encoding.writeVarUint(aw, MSG_AWARENESS)
-  encoding.writeVarUint8Array(aw, awarenessProtocol.encodeAwarenessUpdate(s.awareness, [s.doc.clientID]))
+  // Toutes les présences connues (y compris celles relayées) : le nouveau venu voit tout le monde tout de suite
+  encoding.writeVarUint8Array(aw, awarenessProtocol.encodeAwarenessUpdate(s.awareness, [...s.awareness.getStates().keys()]))
   send(aw, peer)
 }
 
 function forget(peer: string): void {
   if (!s) return
   const ids = s.peerClients.get(peer)
-  if (ids?.size) awarenessProtocol.removeAwarenessStates(s.awareness, [...ids], REMOTE)
   s.peerClients.delete(peer)
+  // Présences encore annoncées par un autre pair (participant joint aussi par un autre chemin) : conservées
+  const still = new Set([...s.peerClients.values()].flatMap((set) => [...set]))
+  const gone = [...(ids ?? [])].filter((id) => !still.has(id))
+  if (gone.length) awarenessProtocol.removeAwarenessStates(s.awareness, gone, FORGET)
 }
 
 function receive(peer: string, data: Uint8Array): void {
@@ -122,7 +137,7 @@ function receive(peer: string, data: Uint8Array): void {
     if (type === MSG_SYNC) {
       const enc = encoding.createEncoder()
       encoding.writeVarUint(enc, MSG_SYNC)
-      const kind = syncProtocol.readSyncMessage(dec, enc, s.doc, REMOTE)
+      const kind = syncProtocol.readSyncMessage(dec, enc, s.doc, { peer } satisfies Remote)
       if (encoding.length(enc) > 1) send(enc, peer)
       if (kind === syncProtocol.messageYjsSyncStep2) void onFirstSync()
     } else if (type === MSG_AWARENESS) {
@@ -136,7 +151,7 @@ function receive(peer: string, data: Uint8Array): void {
         decoding.readVarString(d)
       }
       s.peerClients.set(peer, ids)
-      awarenessProtocol.applyAwarenessUpdate(s.awareness, update, REMOTE)
+      awarenessProtocol.applyAwarenessUpdate(s.awareness, update, { peer } satisfies Remote)
     }
   } catch {
     /* message illisible (version différente de l'app) : ignoré */
@@ -147,8 +162,93 @@ function refreshPeople(): void {
   if (!s) return
   const people = [...s.awareness.getStates()]
     .filter(([id, st]) => id !== s!.doc.clientID && st.user)
-    .map(([id, st]) => ({ id, name: String(st.user.name), color: String(st.user.color), file: (st.file as string | null) ?? null }))
-  setCollab({ people })
+    .map(([id, st]) => ({
+      id,
+      name: String(st.user.name),
+      color: String(st.user.color),
+      file: (st.file as string | null) ?? null,
+      typing: !!st.typing
+    }))
+  // Arrivées et départs, affichés dans la discussion (pas pour ceux déjà là à notre arrivée)
+  const before = store.get().collab.people
+  const events = [...store.get().collab.events]
+  if (Date.now() - s.startedAt > 4000) {
+    for (const p of people) if (!before.some((b) => b.id === p.id)) events.push({ ts: Date.now(), text: `${p.name} a rejoint la session` })
+    for (const b of before) if (!people.some((p) => p.id === b.id)) events.push({ ts: Date.now(), text: `${b.name} a quitté la session` })
+  }
+  setCollab({ people, events })
+}
+
+// ---------------------------------------------------------------------------
+// Discussion
+// ---------------------------------------------------------------------------
+
+const chatOf = (doc: Y.Doc): Y.Array<ChatMessage> => doc.getArray<ChatMessage>('chat')
+
+function myUid(): string {
+  let uid = store.get().settings.collabUserId
+  if (!uid) {
+    uid = crypto.randomUUID()
+    void updateSettings({ collabUserId: uid })
+  }
+  return uid
+}
+
+export const isMine = (m: ChatMessage): boolean => m.uid === store.get().settings.collabUserId
+
+export function sendChat(text: string, ref?: ChatMessage['ref']): void {
+  if (!s?.root || (!text.trim() && !ref)) return
+  const user = s.awareness.getLocalState()?.user as { name: string; color: string }
+  const msg: ChatMessage = { id: crypto.randomUUID(), uid: myUid(), name: user.name, color: user.color, text: text.trim().slice(0, 2000), ts: Date.now() }
+  if (ref) msg.ref = ref
+  chatOf(s.doc).push([msg])
+  setTyping(false)
+}
+
+/** « … écrit » : signalé aux autres via la présence (éphémère), retiré 3 s après la dernière frappe */
+export function setTyping(on: boolean): void {
+  if (!s) return
+  clearTimeout(s.timers.typing)
+  if (!!s.awareness.getLocalState()?.typing !== on) s.awareness.setLocalStateField('typing', on)
+  if (on) s.timers.typing = window.setTimeout(() => setTyping(false), 3000)
+}
+
+export const chatVisible = (): boolean => {
+  const st = store.get()
+  return st.panel === 'chat' && st.settings.sidebarVisible && document.hasFocus()
+}
+
+/** Discussion lue (affichée, fenêtre au premier plan) : mémorisé par projet */
+export function markChatRead(): void {
+  if (!s?.root) return
+  const root = s.root
+  const count = store.get().collab.chat.length
+  const sessions = store.get().settings.collabSessions
+  if (!sessions[root] || sessions[root].chatRead === count) return
+  clearTimeout(s.timers.read)
+  s.timers.read = window.setTimeout(() => {
+    const cur = store.get().settings.collabSessions
+    if (cur[root]) void updateSettings({ collabSessions: { ...cur, [root]: { ...cur[root], chatRead: count } } })
+  }, 300)
+}
+
+export function openChat(): void {
+  store.set({ panel: 'chat' })
+  if (!store.get().settings.sidebarVisible) void updateSettings({ sidebarVisible: true })
+}
+
+/** Nouveau message d'un autre participant : bulle dans l'app, ou notification Windows si l'app est en arrière-plan */
+function notifyMessage(m: ChatMessage): void {
+  if (chatVisible()) return
+  const body = m.text || (m.ref ? `📍 ${m.ref.file} : ${m.ref.line}` : '')
+  if (!document.hasFocus()) {
+    if (!store.get().settings.collabNotify) return
+    const n = new Notification(`${m.name} · Lumen TeX`, { body: body.slice(0, 160), silent: true })
+    n.onclick = () => {
+      api.focusWindow()
+      openChat()
+    }
+  } else toast(`${m.name} : ${body.slice(0, 90)}`, 'info', { label: 'Ouvrir', run: openChat }, 6000)
 }
 
 // ---------------------------------------------------------------------------
@@ -312,36 +412,46 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
     awaitSync,
     parentDir: '',
     timers: {},
-    offs: []
+    offs: [],
+    startedAt: Date.now()
   }
   s = sess
 
+  // Modifications locales et reçues : envoyées à tous les pairs, sauf celui dont elles viennent.
+  // Une modification déjà connue ne produit pas de nouvel événement : la retransmission s'arrête d'elle-même
   const onUpdate = (update: Uint8Array, origin: unknown): void => {
-    if (origin !== REMOTE) {
-      const enc = encoding.createEncoder()
-      encoding.writeVarUint(enc, MSG_SYNC)
-      syncProtocol.writeUpdate(enc, update)
-      send(enc)
-    }
+    const enc = encoding.createEncoder()
+    encoding.writeVarUint(enc, MSG_SYNC)
+    syncProtocol.writeUpdate(enc, update)
+    send(enc, undefined, remotePeer(origin))
     schedulePersist()
   }
   const onAwareness = ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown): void => {
-    if (origin !== REMOTE) {
+    if (origin !== FORGET) {
       const enc = encoding.createEncoder()
       encoding.writeVarUint(enc, MSG_AWARENESS)
       encoding.writeVarUint8Array(enc, awarenessProtocol.encodeAwarenessUpdate(awareness, [...added, ...updated, ...removed]))
-      send(enc)
+      send(enc, undefined, remotePeer(origin))
     }
     refreshPeople()
+  }
+  const chat = chatOf(doc)
+  const onChat = (e: Y.YArrayEvent<ChatMessage>, tr: Y.Transaction): void => {
+    setCollab({ chat: chat.toArray() })
+    if (!remotePeer(tr.origin)) return
+    for (const d of e.changes.delta)
+      for (const m of (d.insert as ChatMessage[] | undefined) ?? []) if (!isMine(m) && m.ts > sess.startedAt - 5000) notifyMessage(m)
   }
   doc.on('update', onUpdate)
   awareness.on('update', onAwareness)
   sess.files.observeDeep(onFilesChanged)
+  chat.observe(onChat)
   let lastActive = getActivePath()
   sess.offs.push(
     () => doc.off('update', onUpdate),
     () => awareness.off('update', onAwareness),
     () => sess.files.unobserveDeep(onFilesChanged),
+    () => chat.unobserve(onChat),
     api.onCollabPeer((id, joined) => (joined ? greet(id) : forget(id))),
     api.onCollabData(receive),
     api.onCollabStatus((net) => setCollab({ net })),
@@ -351,7 +461,7 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
       if (a !== lastActive) awareness.setLocalStateField('file', (lastActive = a))
     })
   )
-  setCollab({ active: true, code, role, joining: !root, people: [], net: { state: 'starting', peers: 0 } })
+  setCollab({ active: true, code, role, joining: !root, people: [], chat: chat.toArray(), events: [], net: { state: 'starting', peers: 0 } })
   await api.collabStart(code)
 }
 
@@ -453,6 +563,7 @@ export async function stopSession({ forget }: { forget: boolean }): Promise<void
   const sess = s
   clearTimeout(sess.timers.write)
   clearTimeout(sess.timers.save)
+  clearTimeout(sess.timers.typing)
   if (sess.pending.size) await flushWrites()
   await persist()
   awarenessProtocol.removeAwarenessStates(sess.awareness, [sess.doc.clientID], 'leave')
@@ -467,5 +578,6 @@ export async function stopSession({ forget }: { forget: boolean }): Promise<void
     await updateSettings({ collabSessions: sessions })
     await api.collabClearState(sess.root)
   }
-  setCollab({ active: false, code: '', joining: false, people: [], net: { state: 'off', peers: 0 } })
+  setCollab({ active: false, code: '', joining: false, people: [], chat: [], events: [], net: { state: 'off', peers: 0 } })
+  if (store.get().panel === 'chat') store.set({ panel: 'files' })
 }

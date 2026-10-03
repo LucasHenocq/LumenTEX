@@ -45,6 +45,7 @@ const api = {
   closeNow: (): void => ipcRenderer.send('app:close-now'),
   onUpdateReady: (cb: (version: string) => void) => on<[string]>('app:update-ready', cb),
   installUpdate: (): Promise<void> => invoke('app:install-update'),
+  focusWindow: (): void => ipcRenderer.send('app:focus'),
   pendingOpen: (): Promise<string | null> => invoke('app:pending-open'),
 
   stat: (p: string): Promise<{ exists: boolean; isDir: boolean }> => invoke('fs:stat', p),
@@ -108,7 +109,7 @@ const api = {
   collabStart: (code: string): Promise<void> => invoke('collab:start', code),
   collabStop: (): Promise<void> => invoke('collab:stop'),
   collabStatus: (): Promise<CollabNetStatus> => invoke('collab:status'),
-  collabSend: (data: Uint8Array, to?: string): void => ipcRenderer.send('collab:send', data, to),
+  collabSend: (data: Uint8Array, to?: string, except?: string): void => ipcRenderer.send('collab:send', data, to, except),
   collabLoadState: (root: string): Promise<Uint8Array | null> => invoke('collab:load-state', root),
   collabSaveState: (root: string, data: Uint8Array): Promise<void> => invoke('collab:save-state', root, data),
   collabClearState: (root: string): Promise<void> => invoke('collab:clear-state', root),

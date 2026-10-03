@@ -52,8 +52,12 @@ export interface Settings {
   copilotHeight: number
   /** Nom affiché aux autres participants d'une session partagée (vide = nom de la session Windows) */
   collabName: string
-  /** Sessions partagées par dossier de projet : reprises automatiquement à l'ouverture du projet */
-  collabSessions: Record<string, { code: string }>
+  /** Sessions partagées par dossier de projet : reprises automatiquement à l'ouverture du projet ; chatRead : messages lus */
+  collabSessions: Record<string, { code: string; chatRead?: number }>
+  /** Identifiant stable de l'utilisateur dans les sessions (reconnaître ses propres messages) */
+  collabUserId: string
+  /** Notifications Windows des messages quand Lumen TeX est en arrière-plan */
+  collabNotify: boolean
   /** Dernière version dont les nouveautés ont été présentées (vide : jamais) */
   lastSeenVersion: string
   pdfDarkMode: boolean
@@ -76,6 +80,19 @@ export interface CollabNetStatus {
   state: 'off' | 'starting' | 'searching' | 'online' | 'network' | 'unavailable'
   /** Participants connectés et authentifiés */
   peers: number
+}
+
+/** Message de la discussion d'une session partagée (conservé dans le projet, avec les fichiers) */
+export interface ChatMessage {
+  id: string
+  /** Auteur : identifiant stable, nom et couleur au moment de l'envoi */
+  uid: string
+  name: string
+  color: string
+  text: string
+  ts: number
+  /** Position dans le projet jointe au message (ligne, et sélection citée) */
+  ref?: { file: string; line: number; quote?: string }
 }
 
 /** Fichier image ou PDF préparé pour la conversion en LaTeX */

@@ -27,6 +27,8 @@ export const defaultSettings: Settings = {
   collabName: '',
   collabSessions: {},
   lastSeenVersion: '',
+  collabUserId: '',
+  collabNotify: true,
   pdfDarkMode: false,
   sidebarWidth: 260,
   pdfRatio: 0.5,

@@ -101,7 +101,7 @@ function UsageBadge({ u }: { u: Usage }): React.JSX.Element | null {
 }
 
 /** Mise en forme en ligne : `code`, **gras**, *italique* */
-function inline(text: string): React.ReactNode[] {
+export function inline(text: string): React.ReactNode[] {
   return text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/).map((s, i) =>
     s.length > 2 && s.startsWith('`') ? (
       <code key={i}>{highlightTex(s.slice(1, -1))}</code>

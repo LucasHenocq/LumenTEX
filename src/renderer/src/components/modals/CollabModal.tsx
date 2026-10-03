@@ -8,8 +8,12 @@ import { closeModal, ModalFrame } from '../Modals'
  * État du réseau en mots simples (jamais d'erreur technique : les détails vont dans collab.log).
  * tone : ok (vert), wait (neutre), warn (orange)
  */
+/** Personnes présentes : jointes directement ou par l'intermédiaire d'un autre participant */
+export const presentCount = (c: CollabState): number => (c.net.peers > 0 ? Math.max(c.net.peers, c.people.length) : 0)
+
 export function collabMessage(c: CollabState, waitedLong = false): { tone: 'ok' | 'wait' | 'warn'; title: string; text?: string } {
-  const { state, peers } = c.net
+  const { state } = c.net
+  const peers = presentCount(c)
   if (state === 'unavailable')
     return {
       tone: 'warn',

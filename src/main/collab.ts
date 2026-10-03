@@ -134,6 +134,11 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
           conn.destroy(new Error('preuve refusée'))
           return
         }
+        // Pour les tests : nombre maximal de pairs (simule deux participants qui ne peuvent pas se joindre)
+        if (peers.size >= (Number(process.env.LUMEN_COLLAB_MAX_PEERS) || Infinity) && !peers.has(id)) {
+          conn.destroy()
+          return
+        }
         authed = true
         clearTimeout(timer)
         peers.get(id)?.destroy()
@@ -185,7 +190,8 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
     .finally(() => clearTimeout(slow))
 }
 
-export function sendCollab(data: Uint8Array, to?: string): void {
+/** to : un seul pair ; except : tous sauf celui-ci (retransmission de ce qu'il a envoyé) */
+export function sendCollab(data: Uint8Array, to?: string, except?: string): void {
   const buf = Buffer.from(data)
   const msgs: Buffer[] = []
   if (buf.length <= PART) msgs.push(Buffer.concat([Buffer.from([MSG_DATA]), buf]))
@@ -194,7 +200,7 @@ export function sendCollab(data: Uint8Array, to?: string): void {
       const last = at + PART >= buf.length ? 1 : 0
       msgs.push(Buffer.concat([Buffer.from([MSG_PART, last]), buf.subarray(at, at + PART)]))
     }
-  for (const [id, conn] of peers) if (!to || to === id) for (const m of msgs) conn.write(m)
+  for (const [id, conn] of peers) if ((!to || to === id) && id !== except) for (const m of msgs) conn.write(m)
 }
 
 export async function stopCollab(): Promise<void> {
