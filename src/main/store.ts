@@ -26,6 +26,7 @@ export const defaultSettings: Settings = {
   copilotHeight: 280,
   collabName: '',
   collabSessions: {},
+  lastSeenVersion: '',
   pdfDarkMode: false,
   sidebarWidth: 260,
   pdfRatio: 0.5,

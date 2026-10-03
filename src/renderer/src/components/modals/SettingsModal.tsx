@@ -140,7 +140,9 @@ export default function SettingsModal(): React.JSX.Element {
               {label}
             </button>
           ))}
-          <span className="settings-version">Lumen TeX {__APP_VERSION__}</span>
+          <button className="settings-version" title="Voir les nouveautés de chaque version" onClick={() => store.set({ modal: { type: 'whats-new' } })}>
+            Lumen TeX {__APP_VERSION__}
+          </button>
         </nav>
         <div className="settings-content">
           {section === 'appearance' && (

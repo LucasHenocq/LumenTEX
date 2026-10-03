@@ -54,6 +54,8 @@ export interface Settings {
   collabName: string
   /** Sessions partagées par dossier de projet : reprises automatiquement à l'ouverture du projet */
   collabSessions: Record<string, { code: string }>
+  /** Dernière version dont les nouveautés ont été présentées (vide : jamais) */
+  lastSeenVersion: string
   pdfDarkMode: boolean
   sidebarWidth: number
   pdfRatio: number

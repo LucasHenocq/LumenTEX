@@ -6,6 +6,7 @@ import Modals from './Modals'
 import Toasts from './Toasts'
 import Welcome from './Welcome'
 import Workspace from './Workspace'
+import { checkWhatsNew } from '../lib/changelog'
 
 const api = window.api
 
@@ -55,6 +56,7 @@ export default function App(): React.JSX.Element {
       store.set({ settings, tectonic })
       applyTheme()
       store.set({ ready: true })
+      checkWhatsNew()
       const pending = await api.pendingOpen()
       if (pending) await openPath(pending)
       else if (settings.lastProject) {

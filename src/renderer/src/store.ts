@@ -13,6 +13,8 @@ export type Modal =
   | { type: 'convert'; file?: string }
   /** join : ouvre directement « Rejoindre une session » */
   | { type: 'collab'; join?: boolean }
+  /** since : nouveautés installées depuis cette version ; absent : historique complet */
+  | { type: 'whats-new'; since?: string }
   | null
 
 export interface Toast {
