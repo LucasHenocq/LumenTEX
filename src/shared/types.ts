@@ -50,6 +50,10 @@ export interface Settings {
   /** Dernier état de connexion connu de GitHub Copilot (null = inconnu) */
   copilotLoggedIn: boolean | null
   copilotHeight: number
+  /** Nom affiché aux autres participants d'une session partagée (vide = nom de la session Windows) */
+  collabName: string
+  /** Sessions partagées par dossier de projet : reprises automatiquement à l'ouverture du projet */
+  collabSessions: Record<string, { code: string }>
   pdfDarkMode: boolean
   sidebarWidth: number
   pdfRatio: number
@@ -59,6 +63,17 @@ export interface Settings {
   projects: Record<string, ProjectPrefs>
   lastProject: string | null
   windowBounds?: { x: number; y: number; width: number; height: number }
+}
+
+/**
+ * Réseau du partage en pair-à-pair :
+ * starting : lancement ; searching : annonce sur le réseau en cours ; online : annoncé, en attente ou connecté ;
+ * network : le réseau ne répond pas (hors ligne, pare-feu) ; unavailable : module réseau inutilisable ; off : arrêté
+ */
+export interface CollabNetStatus {
+  state: 'off' | 'starting' | 'searching' | 'online' | 'network' | 'unavailable'
+  /** Participants connectés et authentifiés */
+  peers: number
 }
 
 /** Fichier image ou PDF préparé pour la conversion en LaTeX */

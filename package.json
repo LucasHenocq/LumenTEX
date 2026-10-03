@@ -1,7 +1,7 @@
 {
   "name": "lumen-tex",
   "productName": "Lumen TeX",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Éditeur LaTeX moderne avec aperçu PDF en direct",
   "main": "./out/main/index.js",
   "author": "Lucas Henocq",
@@ -39,11 +39,18 @@
     "electron-updater": "^6.8.9",
     "electron-vite": "^5.0.0",
     "katex": "^0.18.9",
+    "lib0": "^0.2.119",
     "lucide-react": "^1.48.0",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
-    "vite": "^7.3.6"
+    "vite": "^7.3.6",
+    "y-codemirror.next": "^0.3.6",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
+  },
+  "dependencies": {
+    "hyperswarm": "^4.17.2"
   }
 }

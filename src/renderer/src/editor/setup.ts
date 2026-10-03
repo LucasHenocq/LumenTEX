@@ -36,7 +36,11 @@ export const hooks = {
   onDocChanged: (_path: string, _state: EditorState): void => {},
   onSelection: (_state: EditorState): void => {},
   syncForward: (_path: string, _line: number): void => {},
-  dropFiles: (_files: File[], _view: EditorView, _pos: number): void => {}
+  dropFiles: (_files: File[], _view: EditorView, _pos: number): void => {},
+  /** Session partagée : lien du document avec le texte partagé (vide hors session) */
+  collabExtension: (_path: string): Extension => [],
+  /** Session partagée : contenu partagé du fichier, prioritaire sur celui du disque */
+  collabText: (_path: string): string | null => null
 }
 
 export interface OpenDoc {
@@ -57,6 +61,7 @@ const vimC = new Compartment()
 const wrapC = new Compartment()
 const attrsC = new Compartment()
 const mathC = new Compartment()
+const collabC = new Compartment()
 
 function settingsExtensions(s: Settings): { vim: Extension; wrap: Extension; attrs: Extension; math: Extension } {
   return {
@@ -193,6 +198,7 @@ export function createState(path: string, text: string): EditorState {
       wrapC.of(s.wrap),
       attrsC.of(s.attrs),
       editorTheme,
+      collabC.of(hooks.collabExtension(path)),
       EditorView.updateListener.of((u) => {
         const p = u.state.facet(fileFacet)
         if (u.docChanged) hooks.onDocChanged(p, u.state)
@@ -271,7 +277,7 @@ export function showDoc(path: string | null): void {
 
 export function openDoc(path: string, text: string): void {
   if (docs.has(path)) return
-  const state = createState(path, text)
+  const state = createState(path, hooks.collabText(path) ?? text)
   docs.set(path, { state, saved: state.doc, scrollTop: 0 })
 }
 
@@ -296,6 +302,27 @@ export function replaceContent(path: string, text: string): void {
   } else {
     d.state = d.state.update({ changes: { from: 0, to: d.state.doc.length, insert: text } }).state
     d.saved = d.state.doc
+  }
+}
+
+/**
+ * Début ou fin de session partagée : chaque document ouvert reprend le texte partagé puis se lie à lui
+ * (le lien suppose un contenu identique au moment où il s'établit)
+ */
+export function reconfigureCollab(only?: (path: string) => boolean): void {
+  for (const [path, d] of docs) {
+    if (only && !only(path)) continue
+    const shared = hooks.collabText(path)
+    const apply = (st: EditorState): EditorState => {
+      let s = st
+      if (shared !== null && s.doc.toString() !== shared) s = s.update({ changes: { from: 0, to: s.doc.length, insert: shared } }).state
+      return s.update({ effects: collabC.reconfigure(hooks.collabExtension(path)) }).state
+    }
+    if (path === activePath && view) {
+      const cur = view.state.doc.toString()
+      if (shared !== null && cur !== shared) view.dispatch({ changes: { from: 0, to: cur.length, insert: shared } })
+      view.dispatch({ effects: collabC.reconfigure(hooks.collabExtension(path)) })
+    } else d.state = apply(d.state)
   }
 }
 

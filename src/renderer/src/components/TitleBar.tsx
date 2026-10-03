@@ -8,6 +8,7 @@ import {
   Play,
   Settings2,
   Square,
+  Users,
   Zap
 } from 'lucide-react'
 import { useMemo } from 'react'
@@ -16,6 +17,22 @@ import { cancelCompile, compile, exportPdf, setMainFile } from '../lib/actions'
 import { contents } from '../lib/projectIndex'
 import { store, updateSettings, useApp } from '../store'
 import { kb } from '../lib/keys'
+
+/** Partager le projet / session en cours (avec le nombre de personnes connectées) */
+function CollabButton(): React.JSX.Element {
+  const c = useApp((s) => s.collab)
+  const on = c.active && !c.joining
+  return (
+    <button
+      className={`icon-btn collab-btn${on ? ' toggled' : ''}`}
+      title={on ? 'Session partagée' : 'Travailler à plusieurs'}
+      onClick={() => store.set({ modal: { type: 'collab' } })}
+    >
+      <Users size={16} />
+      {on && c.net.peers > 0 && <span className="collab-count">{c.net.peers}</span>}
+    </button>
+  )
+}
 
 export default function TitleBar(): React.JSX.Element {
   const projectName = useApp((s) => s.projectName)
@@ -89,6 +106,7 @@ export default function TitleBar(): React.JSX.Element {
       </div>
 
       <div className="titlebar-right">
+        <CollabButton />
         <button className="icon-btn" title={kb('Exporter en PDF (⌘E)')} disabled={!hasPdf} onClick={() => void exportPdf()}>
           <Download size={16} />
         </button>

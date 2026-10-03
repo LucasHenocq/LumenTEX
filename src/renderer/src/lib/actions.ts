@@ -25,6 +25,7 @@ import { refreshLint, wrapSelection } from '../editor/features'
 import { store, toast, updateSettings } from '../store'
 import { emit } from './bus'
 import { contents, removeContent, setAllContents, setFileList, updateContent } from './projectIndex'
+import { collabActive, collabDiskChanged, onProjectOpened, stopSession } from './collab'
 
 const api = window.api
 
@@ -187,12 +188,14 @@ export async function openProject(root: string, opts: { openFile?: string } = {}
     const tectonic = store.get().tectonic
     if (tectonic?.found) void compile()
   }
+  await onProjectOpened(root)
 }
 
 export async function closeProject(): Promise<void> {
   const { root } = store.get()
   if (!root) return
   await saveAll()
+  await stopSession({ forget: false })
   persistTabs()
   for (const p of [...docs.keys()]) closeDoc(p)
   showDoc(null)
@@ -293,10 +296,26 @@ export async function saveAll(): Promise<void> {
 
 const lastWrites = new Map<string, string>()
 
+/** Contenu identique au dernier écrit par l'app : écho de sa propre écriture sur le disque */
+export const isOwnWrite = (path: string, text: string): boolean => lastWrites.get(path) === text
+
+/** Session partagée : écrit un fichier modifié par la session (sans le recharger ensuite depuis le disque) */
+export async function writeFromSession(root: string, path: string, text: string): Promise<void> {
+  if (store.get().root === root && docs.has(path) && textOf(path) === text) return saveFile(path)
+  await api.write(root, path, text)
+  lastWrites.set(path, text)
+  if (store.get().root === root) updateContent(path, text)
+}
+
 export async function handleFsChanged(paths: string[]): Promise<void> {
   const { root } = store.get()
   if (!root) return
   await refreshFiles()
+  // Session partagée : le disque alimente la session, qui met à jour l'éditeur (pas de rechargement ici)
+  if (collabActive()) {
+    await collabDiskChanged(paths)
+    return
+  }
   const known = new Set(store.get().files.map((f) => f.path))
   for (const p of paths) {
     if (!known.has(p)) {

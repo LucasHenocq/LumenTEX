@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { CompileResult, Diagnostic, FileEntry, Settings, TectonicStatus } from '../../shared/types'
+import type { CollabNetStatus, CompileResult, Diagnostic, FileEntry, Settings, TectonicStatus } from '../../shared/types'
 
 export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search'
 
@@ -11,6 +11,8 @@ export type Modal =
   | { type: 'shortcuts' }
   /** file : chemin absolu d'une image ou d'un PDF à charger d'emblée */
   | { type: 'convert'; file?: string }
+  /** join : ouvre directement « Rejoindre une session » */
+  | { type: 'collab'; join?: boolean }
   | null
 
 export interface Toast {
@@ -18,6 +20,18 @@ export interface Toast {
   kind: 'info' | 'success' | 'error'
   text: string
   action?: { label: string; run: () => void }
+}
+
+/** Session partagée (pair-à-pair) vue par l'interface */
+export interface CollabState {
+  active: boolean
+  code: string
+  role: 'host' | 'guest'
+  net: CollabNetStatus
+  /** Invité en attente du contenu de la session (avant la création du dossier) */
+  joining: boolean
+  /** Autres participants, d'après leur présence (nom, couleur, fichier ouvert) */
+  people: { id: number; name: string; color: string; file: string | null }[]
 }
 
 export type CompileStatus = 'idle' | 'running' | 'success' | 'warning' | 'error'
@@ -49,6 +63,7 @@ export interface AppState {
   pdfPages: number
   pdfScale: number
   resolvedDark: boolean
+  collab: CollabState
 }
 
 type Listener = () => void
@@ -106,7 +121,8 @@ export const store = createStore<AppState>({
   pdfPage: 1,
   pdfPages: 0,
   pdfScale: 1,
-  resolvedDark: false
+  resolvedDark: false,
+  collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [] }
 })
 
 export const useApp = store.use

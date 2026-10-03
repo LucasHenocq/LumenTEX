@@ -15,6 +15,7 @@
 - **Éditeur** : repliage des environnements et sections, curseurs multiples, rechercher/remplacer, correcteur orthographique natif, mode Vim, thèmes clair et sombre, mode sombre du PDF.
 - **Export PDF**, ouverture dans Aperçu, palette de commandes (`⇧⌘P`), ouverture rapide (`⌘P`).
 - **Tectonic** : installé en un clic si absent. Les paquets LaTeX sont téléchargés à la demande.
+- **Travail à plusieurs en direct** : un code de session suffit, chacun voit le texte et le curseur des autres et compile le PDF chez lui. Connexion directe entre ordinateurs (pair-à-pair, [Hyperswarm](https://github.com/holepunchto/hyperswarm)), sans serveur ni compte ; les modifications faites hors ligne sont fusionnées au retour.
 
 ## Télécharger
 

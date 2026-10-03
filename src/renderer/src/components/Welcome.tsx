@@ -1,4 +1,4 @@
-import { Clock, FilePlus2, FolderOpen, FileText, X } from 'lucide-react'
+import { Clock, FilePlus2, FolderOpen, FileText, Users, X } from 'lucide-react'
 import { openFolderDialog, openProject, openTexFileDialog } from '../lib/actions'
 import { store, useApp } from '../store'
 import Logo from './Logo'
@@ -56,6 +56,9 @@ export default function Welcome(): React.JSX.Element {
             <kbd>{kb('⇧⌘O')}</kbd>
           </button>
         </div>
+        <button className="welcome-join" onClick={() => store.set({ modal: { type: 'collab', join: true } })}>
+          <Users size={14} /> Rejoindre une session partagée
+        </button>
 
         {recent.length > 0 && (
           <div className="welcome-recent">

@@ -24,6 +24,8 @@ export const defaultSettings: Settings = {
   geminiModel: '',
   copilotLoggedIn: null,
   copilotHeight: 280,
+  collabName: '',
+  collabSessions: {},
   pdfDarkMode: false,
   sidebarWidth: 260,
   pdfRatio: 0.5,

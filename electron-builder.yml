@@ -6,6 +6,8 @@ directories:
 files:
   - out/**/*
   - package.json
+# Modules natifs de Hyperswarm (udx, sodium) : binaires précompilés fournis, pas de recompilation
+npmRebuild: false
 mac:
   category: public.app-category.productivity
   target:

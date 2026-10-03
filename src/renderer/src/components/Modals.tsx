@@ -6,6 +6,7 @@ import SettingsModal from './modals/SettingsModal'
 import ShortcutsModal from './modals/ShortcutsModal'
 import TableModal from './modals/TableModal'
 import ConvertModal from './modals/ConvertModal'
+import CollabModal from './modals/CollabModal'
 import { emit } from '../lib/bus'
 
 export function ModalFrame({
@@ -73,5 +74,7 @@ export default function Modals(): React.JSX.Element | null {
       return <ShortcutsModal />
     case 'convert':
       return <ConvertModal file={modal.file} />
+    case 'collab':
+      return <CollabModal join={modal.join} />
   }
 }

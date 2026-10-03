@@ -1,6 +1,20 @@
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2 } from 'lucide-react'
 import { store, useApp } from '../store'
 import { kb } from '../lib/keys'
+import { collabMessage } from './modals/CollabModal'
+
+/** Session partagée : pastille cliquable (connectés, recherche, hors ligne) */
+function CollabIndicator(): React.JSX.Element | null {
+  const c = useApp((s) => s.collab)
+  if (!c.active || c.joining) return null
+  const m = collabMessage(c)
+  const label = m.tone === 'warn' ? (c.net.state === 'network' ? 'Hors ligne · fusion au retour' : 'Partage indisponible') : m.tone === 'ok' ? m.title : 'Partagé'
+  return (
+    <button className={`sb-btn sb-collab ${m.tone}`} title={m.title} onClick={() => store.set({ modal: { type: 'collab' } })}>
+      <span className={`collab-dot ${m.tone}`} /> {label}
+    </button>
+  )
+}
 
 export default function StatusBar(): React.JSX.Element {
   const status = useApp((s) => s.compileStatus)
@@ -64,6 +78,7 @@ export default function StatusBar(): React.JSX.Element {
         </button>
       </div>
       <div className="sb-right">
+        <CollabIndicator />
         {vim && <span className="sb-item sb-vim">VIM</span>}
         {active && (
           <>

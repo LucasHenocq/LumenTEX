@@ -10,6 +10,7 @@ import {
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import type { AiEngine, ContextMenuItem, ConvertOptions, FileEntry, SearchMatch, Settings, TemplateFile } from '../shared/types'
 import { BUILD_DIR, buildPaths, cancelCompile, compile } from './compiler'
@@ -22,6 +23,7 @@ import { askGemini, geminiStatus, installGemini, resetGemini, setGeminiKey, stop
 import { cancelLogin, sendLoginCode } from './login'
 import { askOllama, ollamaStatus, pullOllamaModel, startOllama, stopOllama } from './ollama'
 import { buildDocs, docsStatus, userDocsDir } from './docs'
+import { collabStatus, newCode, normalizeCode, sendCollab, startCollab, stopCollab } from './collab'
 import { discard, discardAll, prepareData, prepareFile, runConvert, stopConvert } from './convert'
 
 app.setName('Lumen TeX')
@@ -399,7 +401,8 @@ function registerIpc(): void {
     allowClose = true
     win?.close()
   })
-  ipcMain.handle('app:install-update', () => autoUpdater.quitAndInstall())
+  // Installation silencieuse (sans l'assistant) puis relance de l'app
+  ipcMain.handle('app:install-update', () => autoUpdater.quitAndInstall(true, true))
   ipcMain.handle('app:pending-open', () => {
     const p = pendingOpenPath
     pendingOpenPath = null
@@ -441,6 +444,12 @@ function registerIpc(): void {
       }
     }
     return out
+  })
+  ipcMain.handle('fs:write-binary', (_e, root: string, rel: string, data: Uint8Array) => {
+    const abs = inside(root, rel)
+    fs.mkdirSync(path.dirname(abs), { recursive: true })
+    fs.writeFileSync(abs, data)
+    return true
   })
   ipcMain.handle('fs:write', (_e, root: string, rel: string, content: string) => {
     const abs = inside(root, rel)
@@ -654,6 +663,36 @@ function registerIpc(): void {
     return { file: rel.split(path.sep).join('/'), line: r.line }
   })
 
+  // --- Édition à plusieurs (pair-à-pair) ---
+  const collabState = (root: string): string => path.join(root, BUILD_DIR, 'collab', 'state.bin')
+  ipcMain.handle('collab:new-code', () => newCode())
+  ipcMain.handle('collab:normalize-code', (_e, code: string) => normalizeCode(code))
+  ipcMain.handle('collab:start', (_e, code: string) => startCollab(code, send))
+  ipcMain.handle('collab:stop', () => stopCollab())
+  ipcMain.handle('collab:status', () => collabStatus())
+  ipcMain.on('collab:send', (_e, data: Uint8Array, to?: string) => sendCollab(data, to))
+  ipcMain.handle('collab:load-state', (_e, root: string) => {
+    try {
+      return new Uint8Array(fs.readFileSync(collabState(root)))
+    } catch {
+      return null
+    }
+  })
+  ipcMain.handle('collab:save-state', (_e, root: string, data: Uint8Array) => {
+    fs.mkdirSync(path.dirname(collabState(root)), { recursive: true })
+    // Écriture atomique : un état tronqué ferait perdre la fusion hors ligne
+    fs.writeFileSync(collabState(root) + '.tmp', data)
+    fs.renameSync(collabState(root) + '.tmp', collabState(root))
+  })
+  ipcMain.handle('collab:clear-state', (_e, root: string) => fs.rmSync(path.dirname(collabState(root)), { recursive: true, force: true }))
+  ipcMain.handle('app:user-name', () => {
+    try {
+      return os.userInfo().username
+    } catch {
+      return ''
+    }
+  })
+
   // --- Tectonic ---
   ipcMain.handle('tectonic:status', (_e, force?: boolean) => findTectonic(!!force))
   ipcMain.handle('tectonic:install', () => installTectonic((p) => send('tectonic:progress', p)))
@@ -710,6 +749,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  void stopCollab()
   cancelCompile() // sinon Tectonic orphelin garde le cache verrouillé
   stopConvert()
   discardAll()
