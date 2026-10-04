@@ -7,7 +7,7 @@ import { store, updateSettings } from '../store'
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
     version: '1.2.2',
-    date: '2026-10-05',
+    date: '2026-10-04',
     items: [
       'Partage : le chef de session choisit les droits. Chaque personne est en lecture seule, en modification, ou en modification avec ajout de fichiers ; ceux qui rejoignent arrivent en lecture seule, sauf ceux à qui il l’a déjà permis.',
       'Partage : chaque fichier peut être modifiable, en lecture seule (cadenas dans l’arbre) ou invisible (il reste sur l’ordinateur du chef).',
