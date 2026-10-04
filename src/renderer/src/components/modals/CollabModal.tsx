@@ -39,7 +39,7 @@ export function collabMessage(c: CollabState, waitedLong = false): { tone: 'ok' 
       tone: 'warn',
       title: 'Le réseau de partage ne répond pas',
       text:
-        'Vérifie ta connexion Internet. Certains réseaux (école, entreprise) bloquent les connexions directes entre ordinateurs : essaie un autre réseau, par exemple un partage de connexion. Lumen TeX continue d’essayer' +
+        'Vérifie ta connexion Internet. Certains réseaux (école, entreprise) bloquent les connexions directes entre ordinateurs : essaie un autre réseau, par exemple un partage de connexion. Les personnes connectées au même Wi-Fi que toi restent joignables. Lumen TeX continue d’essayer' +
         (c.joining ? '.' : ' ; tes modifications seront fusionnées au retour.')
     }
   if (state === 'starting' || state === 'searching') return { tone: 'wait', title: 'Connexion au réseau de partage…' }

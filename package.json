@@ -52,6 +52,7 @@
     "yjs": "^13.6.33"
   },
   "dependencies": {
+    "@hyperswarm/secret-stream": "^6.9.2",
     "hyperswarm": "^4.17.2"
   }
 }

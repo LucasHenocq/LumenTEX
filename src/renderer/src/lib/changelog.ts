@@ -13,7 +13,8 @@ export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
       'Partage : chaque fichier peut être modifiable, en lecture seule (cadenas dans l’arbre) ou invisible (il reste sur l’ordinateur du chef).',
       'Partage : comme dans Live Share, le projet ne s’installe plus chez ceux qui rejoignent ; il est effacé à la fin de la session. Si le chef le permet, « Garder une copie » l’enregistre dans Documents.',
       'Rejoindre une session ne crée plus de dossier en double.',
-      'Le départ brutal d’un participant (coupure, plantage) est vu deux fois plus vite.'
+      'Le départ brutal d’un participant (coupure, plantage) est vu deux fois plus vite.',
+      'Partage : sur un même Wi-Fi, les participants se connectent directement, même quand le réseau (école, entreprise) bloque le partage par Internet.'
     ]
   },
   {

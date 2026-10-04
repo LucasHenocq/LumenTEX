@@ -1,6 +1,9 @@
 import { app } from 'electron'
 import crypto from 'crypto'
+import dgram from 'dgram'
 import fs from 'fs'
+import net, { type AddressInfo } from 'net'
+import os from 'os'
 import path from 'path'
 import type { CollabNetStatus } from '../shared/types'
 import { BUILD_DIR } from './compiler'
@@ -41,7 +44,11 @@ let swarm: {
   on(e: 'connection', cb: (c: Conn) => void): void
   destroy(): Promise<void>
   dht?: { table?: { size: number } }
+  keyPair: KeyPair
 } | null = null
+type KeyPair = { publicKey: Buffer; secretKey: Buffer }
+/** Recherche sur le réseau local (même Wi-Fi) : annonces UDP et connexions TCP chiffrées */
+let lan: { udp: dgram.Socket; tcp: net.Server; timer: NodeJS.Timeout } | null = null
 let watchdog: NodeJS.Timeout | undefined
 let pinger: NodeJS.Timeout | undefined
 /** Dernier message reçu de chaque pair qui envoie des signes de vie (les versions avant 1.2.2 n'en envoient pas) */
@@ -64,6 +71,8 @@ function log(...parts: unknown[]): void {
 }
 
 function setStatus(patch: Partial<CollabNetStatus>): void {
+  // Réseau Internet muet mais participants joints (réseau local) : connecté
+  if (peers.size && patch.state === 'network') patch = { ...patch, state: 'online' }
   status = { ...status, ...patch, peers: peers.size }
   emit('collab:status', status)
 }
@@ -120,8 +129,14 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
     return
   }
   const s = swarm
+  const myKey = s.keyPair.publicKey
+  // Même personne jointe deux fois (Internet et réseau local, ou les deux sens) : les deux côtés gardent la même
+  // connexion, celle ouverte par la plus petite clé (la plus récente si elles ont été ouvertes du même côté)
+  const opener = (c: Conn): Buffer => (c.isInitiator ? myKey : c.remotePublicKey)
+  const preferred = (cur: Conn, old: Conn): boolean => opener(cur).equals(opener(old)) || Buffer.compare(opener(cur), opener(old)) < 0
 
-  s.on('connection', (conn) => {
+  const onConnection = (conn: Conn): void => {
+    if (gen !== generation) return conn.destroy()
     const id = conn.remotePublicKey.toString('hex').slice(0, 16)
     let authed = false
     conn.on('error', (e) => log('connexion', id, e.message))
@@ -150,9 +165,15 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
           conn.destroy()
           return
         }
+        const old = peers.get(id)
+        if (old && !preferred(conn, old)) {
+          clearTimeout(timer)
+          conn.destroy()
+          return
+        }
         authed = true
         clearTimeout(timer)
-        peers.get(id)?.destroy()
+        old?.destroy()
         peers.set(id, conn)
         log('arrivée', id)
         emit('collab:peer', id, true)
@@ -171,7 +192,9 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
       }
     })
     conn.write(Buffer.concat([Buffer.from([MSG_AUTH]), proof(auth, conn, conn.isInitiator)]))
-  })
+  }
+  s.on('connection', onConnection)
+  void startLan(topic, s.keyPair, onConnection, gen)
 
   pinger = setInterval(() => {
     for (const conn of peers.values()) {
@@ -222,6 +245,95 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
     .finally(() => clearTimeout(slow))
 }
 
+// --- Réseau local ---
+// Quand Internet bloque les connexions directes (école, entreprise), les participants d'un même réseau se trouvent
+// par des annonces UDP (diffusion) et se connectent en TCP, chiffré comme sur Internet (Noise, même clé).
+// L'annonce ne contient qu'une empreinte du sujet, pas le code ; la preuve de connaissance du code reste exigée.
+
+const LAN_PORT = 47219
+const LAN_MAGIC = Buffer.from('LMTX1')
+const LAN_EVERY = 3000
+
+/** Adresses de diffusion de chaque réseau IPv4 de l'ordinateur */
+function broadcasts(): string[] {
+  const out = new Set(['255.255.255.255'])
+  for (const list of Object.values(os.networkInterfaces()))
+    for (const a of list ?? []) {
+      if (a.family !== 'IPv4' || a.internal) continue
+      const ip = a.address.split('.').map(Number)
+      const mask = a.netmask.split('.').map(Number)
+      out.add(ip.map((b, i) => (b | (~mask[i] & 255)) & 255).join('.'))
+    }
+  return [...out]
+}
+
+async function startLan(topic: Buffer, keyPair: KeyPair, onConnection: (c: Conn) => void, gen: number): Promise<void> {
+  let SecretStream: new (initiator: boolean, raw: net.Socket, o: object) => Conn & { opened: Promise<boolean> }
+  try {
+    SecretStream = (await import('@hyperswarm/secret-stream')).default as unknown as typeof SecretStream
+  } catch (e) {
+    log('réseau local indisponible', e)
+    return
+  }
+  if (gen !== generation) return
+  const secure = (initiator: boolean, sock: net.Socket): void => {
+    sock.on('error', () => {})
+    const conn = new SecretStream(initiator, sock, { keyPair })
+    conn.on('error', () => {})
+    void conn.opened.then((ok) => (ok ? onConnection(conn) : conn.destroy()))
+  }
+  const lanTopic = crypto.createHash('sha256').update(topic).update('lumen-tex/lan').digest()
+  const tcp = net.createServer((sock) => secure(false, sock))
+  tcp.on('error', (e) => log('réseau local (tcp)', e))
+  tcp.listen(0)
+  const udp = dgram.createSocket({ type: 'udp4', reuseAddr: true })
+  udp.on('error', (e) => log('réseau local (udp)', e))
+  const dialing = new Set<string>()
+  udp.on('message', (msg, from) => {
+    if (msg.length !== 71 || !msg.subarray(0, 5).equals(LAN_MAGIC) || !msg.subarray(5, 37).equals(lanTopic)) return
+    const key = msg.subarray(37, 69)
+    const id = key.toString('hex').slice(0, 16)
+    // Une seule des deux personnes appelle l'autre (la plus petite clé), si elles ne sont pas déjà connectées
+    if (peers.has(id) || dialing.has(id) || Buffer.compare(keyPair.publicKey, key) >= 0) return
+    dialing.add(id)
+    log('réseau local : appel', id, from.address)
+    const sock = net.connect(msg.readUInt16BE(69), from.address)
+    sock.on('close', () => dialing.delete(id))
+    secure(true, sock)
+  })
+  udp.bind(LAN_PORT, () => {
+    try {
+      udp.setBroadcast(true)
+    } catch {
+      /* diffusion refusée : on reçoit quand même les annonces des autres */
+    }
+  })
+  const announce = (): void => {
+    const port = (tcp.address() as AddressInfo | null)?.port
+    if (!port) return
+    const msg = Buffer.alloc(71)
+    LAN_MAGIC.copy(msg, 0)
+    lanTopic.copy(msg, 5)
+    keyPair.publicKey.copy(msg, 37)
+    msg.writeUInt16BE(port, 69)
+    for (const b of broadcasts()) udp.send(msg, LAN_PORT, b, () => {})
+  }
+  lan = { udp, tcp, timer: setInterval(announce, LAN_EVERY) }
+  setTimeout(announce, 300)
+}
+
+function stopLan(): void {
+  if (!lan) return
+  clearInterval(lan.timer)
+  try {
+    lan.udp.close()
+  } catch {
+    /* déjà fermé */
+  }
+  lan.tcp.close()
+  lan = null
+}
+
 /** to : un seul pair ; except : tous sauf celui-ci (retransmission de ce qu'il a envoyé) */
 export function sendCollab(data: Uint8Array, to?: string, except?: string): void {
   const buf = Buffer.from(data)
@@ -240,8 +352,11 @@ export async function stopCollab(): Promise<void> {
   clearInterval(watchdog)
   clearInterval(pinger)
   lastSeen.clear()
+  stopLan()
   const s = swarm
   swarm = null
+  // Connexions du réseau local (celles d'Internet sont fermées avec le swarm)
+  for (const c of peers.values()) c.destroy()
   peers.clear()
   if (status.state !== 'off') setStatus({ state: 'off' })
   if (s) await s.destroy().catch((e) => log('arrêt', e))
