@@ -1,4 +1,4 @@
-import { ChevronRight, FilePlus, FolderPlus, Import, RefreshCw, ChevronsDownUp } from 'lucide-react'
+import { ChevronRight, EyeOff, FilePlus, FolderPlus, Import, Lock, RefreshCw, ChevronsDownUp } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CONVERTIBLE } from '../../../../shared/convert'
 import type { ContextMenuItem, FileEntry } from '../../../../shared/types'
@@ -14,6 +14,7 @@ import {
   setMainFile
 } from '../../lib/actions'
 import { on } from '../../lib/bus'
+import { canAdd, canWrite, isGuestSession } from '../../lib/collab'
 import { store, useApp } from '../../store'
 import FileIcon from '../FileIcon'
 
@@ -83,6 +84,12 @@ export default function FileTree(): React.JSX.Element {
   const diagnostics = useApp((s) => s.diagnostics)
   const projectName = useApp((s) => s.projectName)
   const root = useApp((s) => s.root)
+  // Session partagée : droits (re-rendu à chaque changement), fichiers protégés signalés dans l'arbre
+  const rules = useApp((s) => s.collab.rules)
+  const hidden = useApp((s) => (s.collab.active && root ? s.settings.projects[root]?.collabHidden : undefined)) ?? []
+  const add = rules && canAdd()
+  const writable = (p: string, isDir: boolean): boolean =>
+    isDir ? files.every((f) => f.isDir || !f.path.startsWith(p + '/') || canWrite(f.path)) : canWrite(p)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [editing, setEditing] = useState<Editing>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
@@ -136,21 +143,26 @@ export default function FileTree(): React.JSX.Element {
     e.stopPropagation()
     const dir = node ? (node.isDir ? node.path : node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/')) : '') : ''
     const items: ContextMenuItem[] = [
-      { id: 'new-file', label: 'Nouveau fichier…' },
-      { id: 'new-dir', label: 'Nouveau dossier…' },
-      { id: 'import', label: 'Importer des fichiers…' }
+      { id: 'new-file', label: 'Nouveau fichier…', enabled: add },
+      { id: 'new-dir', label: 'Nouveau dossier…', enabled: add },
+      { id: 'import', label: 'Importer des fichiers…', enabled: add }
     ]
     if (node) {
       items.push({ type: 'separator' } as never)
       if (!node.isDir && /\.tex$/i.test(node.path) && node.path !== mainFile) items.push({ id: 'main', label: 'Définir comme fichier principal' })
-      items.push({ id: 'rename', label: 'Renommer…' }, { id: 'copy-path', label: 'Copier le chemin relatif' })
+      items.push({ id: 'rename', label: 'Renommer…', enabled: add && writable(node.path, node.isDir) }, { id: 'copy-path', label: 'Copier le chemin relatif' })
       if (!node.isDir && /\.(png|jpe?g|pdf|eps|svg)$/i.test(node.path)) items.push({ id: 'insert-graphic', label: 'Insérer \\includegraphics' })
       if (!node.isDir && /\.tex$/i.test(node.path) && node.path !== mainFile) items.push({ id: 'insert-input', label: 'Insérer \\input' })
       if (!node.isDir && CONVERTIBLE.test(node.path)) items.push({ id: 'convert', label: 'Convertir en LaTeX avec l’IA…' })
+      // Invité sans droit de copie : l'emplacement de la copie de travail n'est pas montré
+      if (!(isGuestSession() && !rules.copies))
+        items.push({
+          id: 'reveal',
+          label: window.api.platform === 'darwin' ? 'Afficher dans le Finder' : window.api.platform === 'win32' ? 'Afficher dans l’Explorateur' : 'Afficher dans le dossier'
+        })
       items.push(
-        { id: 'reveal', label: window.api.platform === 'darwin' ? 'Afficher dans le Finder' : window.api.platform === 'win32' ? 'Afficher dans l’Explorateur' : 'Afficher dans le dossier' },
         { type: 'separator' } as never,
-        { id: 'delete', label: 'Mettre à la corbeille', accelerator: window.api.platform === 'darwin' ? 'Cmd+Backspace' : 'Delete' }
+        { id: 'delete', label: 'Mettre à la corbeille', accelerator: window.api.platform === 'darwin' ? 'Cmd+Backspace' : 'Delete', enabled: writable(node.path, node.isDir) }
       )
     }
     const choice = await window.api.popupMenu(items)
@@ -294,6 +306,16 @@ export default function FileTree(): React.JSX.Element {
             <span className={`tree-name${err ? ` has-${err}` : ''}`}>{node.name}</span>
           )}
           {node.path === mainFile && <span className="tree-badge" title="Fichier principal">principal</span>}
+          {rules.files[node.path] && (
+            <span className="tree-lock" title="Lecture seule dans la session partagée">
+              <Lock size={11} />
+            </span>
+          )}
+          {hidden.includes(node.path) && (
+            <span className="tree-lock" title="Invisible pour les autres participants">
+              <EyeOff size={11} />
+            </span>
+          )}
           {dirty[node.path] && <span className="tree-dirty" />}
         </div>
         {node.isDir && isOpen && (
@@ -328,15 +350,16 @@ export default function FileTree(): React.JSX.Element {
       <div className="panel-header">
         <span className="panel-title">{projectName}</span>
         <div className="panel-actions">
-          <button className="icon-btn subtle" title="Nouveau fichier" onClick={() => setEditing({ kind: 'new-file', dir: '' })}>
+          <button className="icon-btn subtle" disabled={!add} title="Nouveau fichier" onClick={() => setEditing({ kind: 'new-file', dir: '' })}>
             <FilePlus size={15} />
           </button>
-          <button className="icon-btn subtle" title="Nouveau dossier" onClick={() => setEditing({ kind: 'new-dir', dir: '' })}>
+          <button className="icon-btn subtle" disabled={!add} title="Nouveau dossier" onClick={() => setEditing({ kind: 'new-dir', dir: '' })}>
             <FolderPlus size={15} />
           </button>
           <button
             className="icon-btn subtle"
             title="Importer un fichier"
+            disabled={!add}
             onClick={async () => {
               const src = await window.api.openFileDialog({ title: 'Importer un fichier dans le projet' })
               if (src) await importFiles([src], '')

@@ -1,14 +1,25 @@
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2 } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2, Lock } from 'lucide-react'
 import { store, useApp } from '../store'
 import { kb } from '../lib/keys'
 import { collabMessage } from './modals/CollabModal'
 import { useUnreadChat } from './ActivityBar'
-import { openChat } from '../lib/collab'
+import { canWrite, openChat } from '../lib/collab'
 
 /** macOS : téléchargement de la mise à jour */
 function UpdateProgress(): React.JSX.Element | null {
   const p = useApp((s) => s.updateProgress)
   return p === null ? null : <span className="sb-item">Mise à jour : {p} %</span>
+}
+
+/** Session partagée : fichier affiché non modifiable */
+function ReadOnly(): React.JSX.Element | null {
+  const active = useApp((s) => s.active)
+  useApp((s) => s.collab.rules)
+  return active && !canWrite(active) ? (
+    <span className="sb-item" title="Le chef de session ne permet pas de modifier ce fichier">
+      <Lock size={12} /> Lecture seule
+    </span>
+  ) : null
 }
 
 /** Session partagée : pastille cliquable (connectés, recherche, hors ligne) */
@@ -99,6 +110,7 @@ export default function StatusBar(): React.JSX.Element {
         </button>
       </div>
       <div className="sb-right">
+        <ReadOnly />
         <UpdateProgress />
         <CollabIndicator />
         {vim && <span className="sb-item sb-vim">VIM</span>}

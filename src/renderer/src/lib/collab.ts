@@ -1,14 +1,14 @@
-import { Prec, type Extension } from '@codemirror/state'
+import { EditorState, Prec, type Extension } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import * as decoding from 'lib0/decoding'
 import * as encoding from 'lib0/encoding'
-import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next'
+import { yCollab, ySyncAnnotation, yUndoManagerKeymap } from 'y-codemirror.next'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import * as syncProtocol from 'y-protocols/sync'
 import * as Y from 'yjs'
 import { docs, getActivePath, hooks, markSaved, reconfigureCollab } from '../editor/setup'
-import type { ChatMessage } from '../../../shared/types'
-import { store, toast, updateSettings, type CollabState } from '../store'
+import type { ChatMessage, FileRight, UserRight } from '../../../shared/types'
+import { NO_RULES, store, toast, updateSettings, type CollabState } from '../store'
 import { closeProject, closeTab, followMove, isOwnWrite, openProject, refreshFiles, saveAll, TEXT_FILE, writeFromSession } from './actions'
 
 // Édition à plusieurs en pair-à-pair. Un document Yjs partagé contient tous les fichiers du projet :
@@ -32,6 +32,8 @@ const remotePeer = (origin: unknown): string | null =>
 const FORGET = 'forget'
 const DISK = 'disk'
 const INIT = 'init'
+/** Fichier rendu invisible par le chef : retiré de la session, mais pas de son disque */
+const HIDE = 'hide'
 const MAX_BINARY = 15 * 1024 * 1024
 const COLORS = ['#e8590c', '#1c7ed6', '#2f9e44', '#c2255c', '#7048e8', '#0c8599', '#e67700', '#5c940d']
 
@@ -59,11 +61,14 @@ interface Session {
   bound: Map<string, Y.Text>
   /** Pas d'état local fiable : attendre un autre participant avant d'importer le disque */
   awaitSync: boolean
-  parentDir: string
   timers: { write?: number; save?: number; typing?: number; read?: number }
   offs: (() => void)[]
   /** Début de session : l'historique reçu à l'arrivée ne déclenche ni notification ni « a rejoint » */
   startedAt: number
+  /** Invité : copie de travail temporaire, effacée à la fin de la session */
+  guest: boolean
+  /** Droits fixés par le chef (voir « Droits ») */
+  rules: Y.Map<unknown>
 }
 
 let s: Session | null = null
@@ -92,7 +97,14 @@ hooks.collabExtension = (path): Extension => {
     return []
   }
   s.bound.set(path, t)
-  return [yCollab(t, s.awareness), Prec.high(keymap.of(yUndoManagerKeymap))]
+  const ext: Extension[] = [yCollab(t, s.awareness), Prec.high(keymap.of(yUndoManagerKeymap))]
+  // Lecture seule : ni frappe, ni insertion (copilot, commandes) ; seules les modifications reçues passent
+  if (!canWrite(path))
+    ext.push(
+      EditorState.readOnly.of(true),
+      EditorState.transactionFilter.of((tr) => (tr.docChanged && !tr.annotation(ySyncAnnotation) ? [] : tr))
+    )
+  return ext
 }
 
 /** Relie (ou délie) les documents ouverts dont le texte partagé a changé (création, renommage, suppression) */
@@ -100,6 +112,130 @@ function syncBindings(): void {
   if (!s) return
   const stale = [...docs.keys()].filter((p) => (s!.bound.get(p) ?? null) !== textAt(p))
   if (stale.length) reconfigureCollab((p) => stale.includes(p))
+}
+
+// ---------------------------------------------------------------------------
+// Droits
+// ---------------------------------------------------------------------------
+// Map partagée « rules », écrite par le seul chef de session : host (son identifiant), copies (les invités peuvent
+// garder une copie), u:<identifiant> (droit d'une personne), f:<chemin> (fichier en lecture seule). Les fichiers
+// invisibles ne sont jamais envoyés : leur liste reste chez le chef (réglages du projet).
+// Chaque app applique les droits de son utilisateur (éditeur verrouillé, modifications du disque annulées) : une
+// protection entre amis. Refuser une modification reçue ne serait pas plus sûr : Yjs bloquerait alors toutes les
+// suivantes de son auteur, et la session divergerait.
+
+const hostId = (): string | null => (s?.rules.get('host') as string | undefined) ?? null
+export const amHost = (): boolean => !!s && hostId() === myUid()
+
+function myRight(): UserRight {
+  if (!s) return 'add'
+  const h = hostId()
+  // Session sans chef (créée avant la 1.2.2) : tout le monde modifie
+  if (!h || h === myUid()) return 'add'
+  return (s.rules.get(`u:${myUid()}`) as UserRight | undefined) ?? 'ro'
+}
+
+/** Ce fichier peut être modifié (la restriction de la personne l'emporte toujours sur celle du fichier) */
+export function canWrite(path: string): boolean {
+  if (!s?.root) return true
+  return myRight() !== 'ro' && (amHost() || s.rules.get(`f:${path}`) !== 'ro')
+}
+
+export const canAdd = (): boolean => !s?.root || myRight() === 'add'
+
+/** Chef de session : fichier invisible pour les autres */
+const isHidden = (path: string): boolean => !!s?.root && !!store.get().settings.projects[s.root]?.collabHidden?.includes(path)
+
+let lastRefusal = 0
+function refused(): void {
+  if (Date.now() - lastRefusal < 5000) return
+  lastRefusal = Date.now()
+  toast(
+    myRight() === 'ro'
+      ? 'Tu es en lecture seule dans cette session : la modification a été annulée.'
+      : 'Le chef de session ne permet pas cette modification : elle a été annulée.',
+    'info',
+    undefined,
+    6000
+  )
+}
+
+/** Action sur les fichiers (création, import, renommage, suppression) permise par les droits ; sinon prévient */
+export function collabAllows(kind: 'add' | 'write', path = ''): boolean {
+  if (!s?.root) return true
+  const sess = s
+  const ok = kind === 'add' ? canAdd() : [...sess.files.keys()].filter((k) => k === path || k.startsWith(path + '/')).every(canWrite)
+  if (!ok) {
+    lastRefusal = 0
+    toast(
+      myRight() === 'ro'
+        ? 'Tu es en lecture seule dans cette session.'
+        : kind === 'add'
+          ? 'Le chef de session ne t’a pas permis d’ajouter des fichiers.'
+          : 'Ce fichier est en lecture seule dans cette session.',
+      'info'
+    )
+  }
+  return ok
+}
+
+/** Copie des droits pour l'interface ; les éditeurs ouverts sont verrouillés ou déverrouillés en conséquence */
+function publishRules(): void {
+  if (!s) return
+  const rules: CollabState['rules'] = { host: hostId(), copies: s.rules.get('copies') !== false, users: {}, files: {} }
+  s.rules.forEach((v, k) => {
+    if (k.startsWith('u:')) rules.users[k.slice(2)] = v as UserRight
+    else if (k.startsWith('f:') && v === 'ro') rules.files[k.slice(2)] = 'ro'
+  })
+  setCollab({ rules })
+  reconfigureCollab()
+}
+
+/** Chef : droit d'une personne, mémorisé pour ses prochaines sessions */
+export function setUserRight(uid: string, right: UserRight): void {
+  if (!s || !amHost()) return
+  s.rules.set(`u:${uid}`, right)
+  void updateSettings({ collabKnown: { ...store.get().settings.collabKnown, [uid]: right } })
+}
+
+/** Chef : droit d'un fichier. Invisible : retiré de la session (chez les autres), gardé sur son disque */
+export async function setFileRight(path: string, right: FileRight): Promise<void> {
+  if (!s?.root || !amHost()) return
+  const sess = s
+  const root = sess.root!
+  const wasHidden = isHidden(path)
+  await setHidden(root, path, right === 'hidden')
+  sess.doc.transact(() => {
+    if (right === 'ro') sess.rules.set(`f:${path}`, 'ro')
+    else sess.rules.delete(`f:${path}`)
+    if (right === 'hidden') sess.files.delete(path)
+  }, HIDE)
+  if (wasHidden && right !== 'hidden') await importAll()
+}
+
+export function setCopies(on: boolean): void {
+  if (s && amHost()) s.rules.set('copies', on)
+}
+
+/** Fichiers invisibles d'un projet (réglages locaux du chef) */
+async function setHidden(root: string, path: string, on: boolean): Promise<void> {
+  const projects = store.get().settings.projects
+  const cur = projects[root]?.collabHidden ?? []
+  const next = on ? [...new Set([...cur, path])] : cur.filter((p) => p !== path)
+  await updateSettings({ projects: { ...projects, [root]: { ...projects[root], collabHidden: next } } })
+}
+
+/** Session d'avant la 1.2.2 (sans chef) : on en devient le chef */
+export function becomeHost(): void {
+  if (!s?.root || hostId()) return
+  s.rules.set('host', myUid())
+}
+
+/** Chef : une personne arrive ; si elle a déjà reçu un droit dans une autre session, elle le retrouve (sinon lecture seule) */
+function welcome(uids: string[]): void {
+  if (!s || !amHost()) return
+  const known = store.get().settings.collabKnown
+  for (const uid of uids) if (!s.rules.has(`u:${uid}`) && known[uid] && known[uid] !== 'ro') s.rules.set(`u:${uid}`, known[uid])
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +304,7 @@ function refreshPeople(): void {
     .filter(([id, st]) => id !== s!.doc.clientID && st.user)
     .map(([id, st]) => ({
       id,
+      uid: String(st.user.uid ?? ''),
       name: String(st.user.name),
       color: String(st.user.color),
       file: (st.file as string | null) ?? null,
@@ -181,6 +318,7 @@ function refreshPeople(): void {
     for (const b of before) if (!people.some((p) => p.id === b.id)) events.push({ ts: Date.now(), text: `${b.name} a quitté la session` })
   }
   setCollab({ people, events })
+  welcome(people.map((p) => p.uid).filter(Boolean))
 }
 
 // ---------------------------------------------------------------------------
@@ -271,7 +409,7 @@ async function persist(): Promise<void> {
 
 /** Changements de la session (autres participants, éditeur) à écrire sur le disque */
 function onFilesChanged(events: Y.YEvent<Y.AbstractType<unknown>>[], tr: Y.Transaction): void {
-  if (!s?.root || tr.origin === DISK || tr.origin === INIT) return
+  if (!s?.root || tr.origin === DISK || tr.origin === INIT || tr.origin === HIDE) return
   for (const e of events) {
     if (e.target === s.files) e.changes.keys.forEach((_c, key) => s!.pending.add(key))
     else if (e.path.length) s.pending.add(String(e.path[0]))
@@ -318,6 +456,8 @@ async function flushWrites(): Promise<void> {
   let removed = false
   for (const key of keys) {
     const v = sess.files.get(key)
+    // Chef : un fichier reçu au chemin d'un de ses fichiers invisibles ne l'écrase pas
+    if (isHidden(key)) continue
     try {
       if (v === undefined) {
         if (store.get().tabs.includes(key)) {
@@ -376,7 +516,7 @@ type Change = { path: string; text?: string; bin?: Uint8Array }
 
 /** Fichier du disque à reporter dans la session, ou null s'il n'a pas changé (ou est trop volumineux) */
 async function readChange(path: string): Promise<Change | null> {
-  if (!s?.root) return null
+  if (!s?.root || isHidden(path)) return null
   const sess = s
   if (TEXT_FILE.test(path)) {
     const text = await api.read(sess.root!, path)
@@ -403,6 +543,18 @@ async function readChange(path: string): Promise<Change | null> {
  */
 function applyDiskBatch(removed: string[], changes: Change[]): void {
   if (!s || (!removed.length && !changes.length)) return
+  const sess = s
+  // Interdit par les droits : le disque reprend le contenu de la session (fichier nouveau : retiré)
+  const undo: string[] = []
+  removed = removed.filter((k) => canWrite(k) || !undo.push(k))
+  changes = changes.filter((c) => (sess.files.has(c.path) ? canWrite(c.path) : canAdd()) || !undo.push(c.path))
+  if (undo.length) {
+    undo.forEach((k) => sess.pending.add(k))
+    clearTimeout(sess.timers.write)
+    sess.timers.write = window.setTimeout(() => void flushWrites(), 250)
+    refused()
+  }
+  if (!removed.length && !changes.length) return
   const { doc, files, moves } = s
   const gone = new Set(removed)
   const renamed: [string, string][] = []
@@ -502,7 +654,7 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
   const name = store.get().settings.collabName.trim() || (await api.userName()) || 'Anonyme'
   const awareness = new awarenessProtocol.Awareness(doc)
   const color = COLORS[doc.clientID % COLORS.length]
-  awareness.setLocalStateField('user', { name, color, colorLight: color + '33' })
+  awareness.setLocalStateField('user', { name, color, colorLight: color + '33', uid: myUid() })
   awareness.setLocalStateField('file', getActivePath())
   const sess: Session = {
     root,
@@ -518,10 +670,11 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
     binWrites: new Map(),
     bound: new Map(),
     awaitSync,
-    parentDir: '',
     timers: {},
     offs: [],
-    startedAt: Date.now()
+    startedAt: Date.now(),
+    guest: role === 'guest',
+    rules: doc.getMap<unknown>('rules')
   }
   s = sess
 
@@ -550,6 +703,9 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
     for (const d of e.changes.delta)
       for (const m of (d.insert as ChatMessage[] | undefined) ?? []) if (!isMine(m) && m.ts > sess.startedAt - 5000) notifyMessage(m)
   }
+  const onRules = (): void => publishRules()
+  sess.rules.observe(onRules)
+  sess.offs.push(() => sess.rules.unobserve(onRules))
   doc.on('update', onUpdate)
   awareness.on('update', onAwareness)
   sess.files.observeDeep(onFilesChanged)
@@ -572,6 +728,7 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
     })
   )
   setCollab({ active: true, code, role, joining: !root, people: [], chat: chat.toArray(), events: [], tooBig: [], net: { state: 'starting', peers: 0 } })
+  publishRules()
   await api.collabStart(code)
 }
 
@@ -582,7 +739,7 @@ async function onFirstSync(): Promise<void> {
   if (!sess.root) {
     const name = sess.meta.get('name')
     if (!name) return
-    const folder = await chooseFolder(sess.parentDir, name, sess.code)
+    const folder = await api.collabGuestDir(sess.code, name)
     if (s !== sess) return
     sess.root = folder
     await writeAll()
@@ -598,27 +755,20 @@ async function onFirstSync(): Promise<void> {
   }
 }
 
-/** Dossier du projet reçu : réutilisé s'il appartient déjà à cette session, sinon « nom-2 », « nom-3 »… */
-async function chooseFolder(parent: string, name: string, code: string): Promise<string> {
-  const safe = name.replace(/[\\/:*?"<>|]/g, '-').trim() || 'Projet partagé'
-  const sessions = store.get().settings.collabSessions
-  for (let i = 1; ; i++) {
-    const folder = `${parent}/${i === 1 ? safe : `${safe}-${i}`}`
-    if (sessions[folder]?.code === code || !(await api.stat(folder)).exists) return folder
-  }
-}
-
-/** Partage le projet ouvert : son contenu devient l'état initial de la session */
-export async function shareProject(): Promise<void> {
+/** Partage le projet ouvert : son contenu devient l'état initial de la session, avec les droits choisis avant */
+export async function shareProject(opts: { copies: boolean; files: Record<string, FileRight> }): Promise<void> {
   const { root, projectName } = store.get()
   if (!root || s) return
+  const hidden = Object.keys(opts.files).filter((p) => opts.files[p] === 'hidden')
+  const projects = store.get().settings.projects
+  await updateSettings({ projects: { ...projects, [root]: { ...projects[root], collabHidden: hidden } } })
   await saveAll()
   const code = await api.collabNewCode()
   const doc = new Y.Doc()
   const entries: [string, Entry][] = []
   const tooBig: { path: string; size: number }[] = []
   for (const f of await api.list(root)) {
-    if (f.isDir) continue
+    if (f.isDir || hidden.includes(f.path)) continue
     try {
       if (TEXT_FILE.test(f.path)) entries.push([f.path, new Y.Text(await api.read(root, f.path))])
       else {
@@ -634,6 +784,10 @@ export async function shareProject(): Promise<void> {
     const files = doc.getMap<Entry>('files')
     for (const [p, v] of entries) files.set(p, v)
     doc.getMap<string>('meta').set('name', projectName)
+    const rules = doc.getMap<unknown>('rules')
+    rules.set('host', myUid())
+    rules.set('copies', opts.copies)
+    for (const [p, r] of Object.entries(opts.files)) if (r === 'ro') rules.set(`f:${p}`, 'ro')
   }, INIT)
   await updateSettings({ collabSessions: { ...store.get().settings.collabSessions, [root]: { code } } })
   await begin(code, root, doc, 'host', false)
@@ -652,16 +806,25 @@ export async function shareProject(): Promise<void> {
   }
 }
 
-/** Rejoint une session : le projet sera créé dans parentDir à l'arrivée de son contenu */
-export async function joinSession(rawCode: string, parentDir: string): Promise<boolean> {
+/** Rejoint une session : le projet arrivera dans une copie de travail temporaire */
+export async function joinSession(rawCode: string): Promise<boolean> {
   const code = await api.collabNormalizeCode(rawCode)
   if (!code) return false
   if (s) await stopSession({ forget: false })
   if (store.get().root) await closeProject()
   await begin(code, null, new Y.Doc(), 'guest', false)
-  if (s) (s as Session).parentDir = parentDir
   return true
 }
+
+/** Invité : copie indépendante du projet dans Documents/Lumen TeX partagés (si le chef le permet) */
+export async function keepCopy(): Promise<string | null> {
+  if (!s?.root || !s.guest || s.rules.get('copies') === false) return null
+  if (s.pending.size) await flushWrites()
+  await saveAll()
+  return api.collabKeepCopy(s.root)
+}
+
+export const isGuestSession = (): boolean => !!s?.guest
 
 /** Projet ouvert : reprend sa session partagée s'il en a une */
 export async function onProjectOpened(root: string): Promise<void> {
@@ -701,6 +864,6 @@ export async function stopSession({ forget }: { forget: boolean }): Promise<void
     await updateSettings({ collabSessions: sessions })
     await api.collabClearState(sess.root)
   }
-  setCollab({ active: false, code: '', joining: false, people: [], chat: [], events: [], tooBig: [], net: { state: 'off', peers: 0 } })
+  setCollab({ active: false, code: '', joining: false, people: [], chat: [], events: [], tooBig: [], rules: NO_RULES, net: { state: 'off', peers: 0 } })
   if (store.get().panel === 'chat') store.set({ panel: 'files' })
 }

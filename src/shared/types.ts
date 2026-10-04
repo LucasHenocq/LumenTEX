@@ -16,7 +16,14 @@ export interface ProjectPrefs {
   mainFile?: string
   openTabs?: string[]
   active?: string | null
+  /** Session partagée dont on est le chef : fichiers invisibles (jamais envoyés aux autres) */
+  collabHidden?: string[]
 }
+
+/** Droit d'une personne dans une session : lecture seule, modification, modification et ajout de fichiers */
+export type UserRight = 'ro' | 'rw' | 'add'
+/** Droit sur un fichier : modifiable (selon la personne), lecture seule, invisible pour les autres */
+export type FileRight = 'rw' | 'ro' | 'hidden'
 
 export interface RecentProject {
   path: string
@@ -58,6 +65,8 @@ export interface Settings {
   collabUserId: string
   /** Notifications du système des messages quand Lumen TeX est en arrière-plan */
   collabNotify: boolean
+  /** Chef de session : dernier droit donné à chaque personne (identifiant), retrouvé dans ses autres sessions */
+  collabKnown: Record<string, UserRight>
   /** Dernière version dont les nouveautés ont été présentées (vide : jamais) */
   lastSeenVersion: string
   pdfDarkMode: boolean

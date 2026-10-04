@@ -6,6 +6,17 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.2.2',
+    date: '2026-10-05',
+    items: [
+      'Partage : le chef de session choisit les droits. Chaque personne est en lecture seule, en modification, ou en modification avec ajout de fichiers ; ceux qui rejoignent arrivent en lecture seule, sauf ceux à qui il l’a déjà permis.',
+      'Partage : chaque fichier peut être modifiable, en lecture seule (cadenas dans l’arbre) ou invisible (il reste sur l’ordinateur du chef).',
+      'Partage : comme dans Live Share, le projet ne s’installe plus chez ceux qui rejoignent ; il est effacé à la fin de la session. Si le chef le permet, « Garder une copie » l’enregistre dans Documents.',
+      'Rejoindre une session ne crée plus de dossier en double.',
+      'Le départ brutal d’un participant (coupure, plantage) est vu deux fois plus vite.'
+    ]
+  },
+  {
     version: '1.2.1',
     date: '2026-10-04',
     items: [

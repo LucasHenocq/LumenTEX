@@ -2,6 +2,7 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import type { Settings } from '../shared/types'
+import { isGuestDir } from './collab'
 
 export const defaultSettings: Settings = {
   theme: 'system',
@@ -26,6 +27,7 @@ export const defaultSettings: Settings = {
   copilotHeight: 280,
   collabName: '',
   collabSessions: {},
+  collabKnown: {},
   lastSeenVersion: '',
   collabUserId: '',
   collabNotify: true,
@@ -82,6 +84,8 @@ export function flushSettings(): void {
 
 export function addRecent(projectPath: string): Settings {
   const s = getSettings()
+  // Copie de travail d'un invité : effacée à la fin de la session, ni récente ni rouverte au lancement
+  if (isGuestDir(projectPath)) return s
   const recent = s.recentProjects.filter((r) => r.path !== projectPath)
   recent.unshift({ path: projectPath, name: path.basename(projectPath), openedAt: Date.now() })
   return setSettings({ recentProjects: recent.slice(0, 12), lastProject: projectPath })

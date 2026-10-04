@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, FileEntry, Settings, TectonicStatus } from '../../shared/types'
+import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, FileEntry, Settings, TectonicStatus, UserRight } from '../../shared/types'
 
 export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat'
 
@@ -25,6 +25,8 @@ export interface Toast {
 }
 
 /** Session partagée (pair-à-pair) vue par l'interface */
+export const NO_RULES: CollabState['rules'] = { host: null, copies: true, users: {}, files: {} }
+
 export interface CollabState {
   active: boolean
   code: string
@@ -33,13 +35,15 @@ export interface CollabState {
   /** Invité en attente du contenu de la session (avant la création du dossier) */
   joining: boolean
   /** Autres participants, d'après leur présence (nom, couleur, fichier ouvert, en train d'écrire) */
-  people: { id: number; name: string; color: string; file: string | null; typing: boolean }[]
+  people: { id: number; uid: string; name: string; color: string; file: string | null; typing: boolean }[]
   /** Discussion de la session (ordre partagé par tous) */
   chat: ChatMessage[]
   /** Arrivées et départs, affichés localement dans la discussion (non conservés) */
   events: { ts: number; text: string }[]
   /** Fichiers de ce projet trop volumineux pour être partagés (restent sur l'ordinateur) */
   tooBig: { path: string; size: number }[]
+  /** Droits fixés par le chef (host : son identifiant, null pour une session d'avant la 1.2.2) */
+  rules: { host: string | null; copies: boolean; users: Record<string, UserRight>; files: Record<string, 'ro'> }
 }
 
 export type CompileStatus = 'idle' | 'running' | 'success' | 'warning' | 'error'
@@ -133,7 +137,7 @@ export const store = createStore<AppState>({
   pdfScale: 1,
   resolvedDark: false,
   updateProgress: null,
-  collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [] }
+  collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [], rules: NO_RULES }
 })
 
 export const useApp = store.use

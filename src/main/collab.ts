@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import type { CollabNetStatus } from '../shared/types'
+import { BUILD_DIR } from './compiler'
 
 // Édition à plusieurs en pair-à-pair, sans serveur : les participants se trouvent sur le DHT de Hyperswarm à partir
 // d'un sujet dérivé du code de session, puis chacun prouve qu'il connaît le code avant le moindre échange.
@@ -16,6 +17,10 @@ const MSG_DATA = 1
 /** Morceau d'un message plus gros que PART (le canal chiffré limite la taille d'un message) */
 const MSG_PART = 2
 const PART = 1024 * 1024
+/** Signe de vie : un pair muet trop longtemps (coupure brutale) est considéré parti sans attendre le réseau */
+const MSG_PING = 3
+const PING_EVERY = 2000
+const SILENT_MAX = 7000
 
 /** Connexion Hyperswarm (flux chiffré Noise, découpé en messages) */
 interface Conn {
@@ -38,6 +43,9 @@ let swarm: {
   dht?: { table?: { size: number } }
 } | null = null
 let watchdog: NodeJS.Timeout | undefined
+let pinger: NodeJS.Timeout | undefined
+/** Dernier message reçu de chaque pair qui envoie des signes de vie (les versions avant 1.2.2 n'en envoient pas) */
+const lastSeen = new Map<Conn, number>()
 let generation = 0
 const peers = new Map<string, Conn>()
 let status: CollabNetStatus = { state: 'off', peers: 0 }
@@ -118,6 +126,7 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
     let authed = false
     conn.on('error', (e) => log('connexion', id, e.message))
     conn.on('close', () => {
+      lastSeen.delete(conn)
       if (authed && peers.get(id) === conn) {
         peers.delete(id)
         log('départ', id)
@@ -150,6 +159,7 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
         setStatus({ state: 'online' })
         return
       }
+      if (lastSeen.has(conn) || d[0] === MSG_PING) lastSeen.set(conn, Date.now())
       if (d[0] === MSG_DATA) emit('collab:data', id, new Uint8Array(d.subarray(1)))
       else if (d[0] === MSG_PART) {
         // Les morceaux arrivent dans l'ordre (flux ordonné) ; le dernier est marqué
@@ -162,6 +172,16 @@ export async function startCollab(code: string, emitter: Emit): Promise<void> {
     })
     conn.write(Buffer.concat([Buffer.from([MSG_AUTH]), proof(auth, conn, conn.isInitiator)]))
   })
+
+  pinger = setInterval(() => {
+    for (const conn of peers.values()) {
+      const seen = lastSeen.get(conn)
+      if (seen && Date.now() - seen > SILENT_MAX) {
+        log('muet, déconnecté', conn.remotePublicKey.toString('hex').slice(0, 16))
+        conn.destroy()
+      } else conn.write(Buffer.from([MSG_PING]))
+    }
+  }, PING_EVERY)
 
   setStatus({ state: 'searching' })
   log('recherche', topic.toString('hex').slice(0, 12))
@@ -218,9 +238,53 @@ export function sendCollab(data: Uint8Array, to?: string, except?: string): void
 export async function stopCollab(): Promise<void> {
   generation++
   clearInterval(watchdog)
+  clearInterval(pinger)
+  lastSeen.clear()
   const s = swarm
   swarm = null
   peers.clear()
   if (status.state !== 'off') setStatus({ state: 'off' })
   if (s) await s.destroy().catch((e) => log('arrêt', e))
+}
+
+// --- Copie de travail des invités ---
+// Rangée dans les données de l'app sous un nom illisible, et toujours effacée à la fin de la session
+// (départ, fermeture du projet ou de l'app ; au lancement suivant après un plantage)
+
+const guestsRoot = (): string => path.join(app.getPath('userData'), 'sessions')
+
+export function isGuestDir(p: string): boolean {
+  const r = path.relative(guestsRoot(), path.resolve(p))
+  return !!r && !r.startsWith('..') && !path.isAbsolute(r)
+}
+
+/** Dossier vide pour le projet d'une session : <sessions>/<empreinte du code>/<nom du projet> */
+export function guestDir(code: string, name: string): string {
+  const hash = crypto.createHash('sha256').update(code).digest('hex').slice(0, 16)
+  const dir = path.join(guestsRoot(), hash, name.replace(/[\\/:*?"<>|]/g, '-').trim() || 'Projet partagé')
+  fs.rmSync(path.dirname(dir), { recursive: true, force: true })
+  fs.mkdirSync(dir, { recursive: true })
+  return dir.split(path.sep).join('/')
+}
+
+/** Efface la copie de travail d'un invité (root), ou toutes */
+export function dropGuestDirs(root?: string): void {
+  if (root && !isGuestDir(root)) return
+  try {
+    fs.rmSync(root ? path.dirname(path.resolve(root)) : guestsRoot(), { recursive: true, force: true, maxRetries: 3 })
+  } catch (e) {
+    log('effacement de la copie de travail', e)
+  }
+}
+
+/** « Garder une copie » : copie indépendante dans Documents/Lumen TeX partagés (« nom-2 »… si déjà pris) */
+export function keepGuestCopy(root: string): string {
+  const parent = path.join(app.getPath('documents'), 'Lumen TeX partagés')
+  const name = path.basename(root)
+  let dest = path.join(parent, name)
+  for (let i = 2; fs.existsSync(dest); i++) dest = path.join(parent, `${name}-${i}`)
+  // Sans l'état de la session (.lumentex/collab) : la copie n'en fait plus partie
+  const state = path.join(path.resolve(root), BUILD_DIR, 'collab')
+  fs.cpSync(root, dest, { recursive: true, filter: (src) => path.resolve(src) !== state })
+  return dest
 }

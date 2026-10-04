@@ -24,6 +24,7 @@ import { askGemini, geminiStatus, installGemini, resetGemini, setGeminiKey, stop
 import { cancelLogin, sendLoginCode } from './login'
 import { askOllama, ollamaStatus, pullOllamaModel, startOllama, stopOllama } from './ollama'
 import { buildDocs, docsStatus, userDocsDir } from './docs'
+import { dropGuestDirs, guestDir, isGuestDir, keepGuestCopy } from './collab'
 import { checkMacUpdate, installMacUpdate, type MacUpdate } from './macUpdate'
 import { collabStatus, newCode, normalizeCode, sendCollab, startCollab, stopCollab } from './collab'
 import { discard, discardAll, prepareData, prepareFile, runConvert, stopConvert } from './convert'
@@ -527,7 +528,9 @@ function registerIpc(): void {
     return true
   })
   ipcMain.handle('fs:trash', async (_e, root: string, rel: string) => {
-    await shell.trashItem(inside(root, rel))
+    // Copie de travail d'un invité : rien ne doit en rester, pas même dans la Corbeille
+    if (isGuestDir(root)) fs.rmSync(inside(root, rel), { recursive: true, force: true })
+    else await shell.trashItem(inside(root, rel))
     return true
   })
   ipcMain.handle('fs:import', (_e, root: string, src: string, destDirRel: string) => {
@@ -737,6 +740,13 @@ function registerIpc(): void {
     fs.renameSync(collabState(root) + '.tmp', collabState(root))
   })
   ipcMain.handle('collab:clear-state', (_e, root: string) => fs.rmSync(path.dirname(collabState(root)), { recursive: true, force: true }))
+  ipcMain.handle('collab:guest-dir', (_e, code: string, name: string) => guestDir(code, name))
+  ipcMain.handle('collab:drop-guest', (_e, root: string) => {
+    if (!isGuestDir(root)) return
+    dropGuestDirs(root)
+    forgetGuestSettings()
+  })
+  ipcMain.handle('collab:keep-copy', (_e, root: string) => keepGuestCopy(root))
   ipcMain.handle('app:user-name', () => {
     try {
       return os.userInfo().username
@@ -836,4 +846,18 @@ app.on('before-quit', (e) => {
   stopConvert()
   discardAll()
   flushSettings()
+})
+
+/** Réglages liés aux copies de travail des invités (session, onglets) : sans objet une fois la copie effacée */
+function forgetGuestSettings(): void {
+  const s = getSettings()
+  const keep = <T>(r: Record<string, T>): Record<string, T> => Object.fromEntries(Object.entries(r).filter(([k]) => !isGuestDir(k)))
+  setSettings({ collabSessions: keep(s.collabSessions), projects: keep(s.projects) })
+}
+
+// Copies de travail des invités : effacées en quittant, et au lancement (plantage, coupure de courant)
+app.on('will-quit', () => dropGuestDirs())
+void app.whenReady().then(() => {
+  dropGuestDirs()
+  forgetGuestSettings()
 })

@@ -1,6 +1,20 @@
-import { Copy, FolderOpen, LogOut, Users, WifiOff } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Crown, FolderDown, LogOut, Users, WifiOff } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { formatCode, joinSession, shareProject, stopSession } from '../../lib/collab'
+import type { FileRight, UserRight } from '../../../../shared/types'
+import { closeProject } from '../../lib/actions'
+import {
+  amHost,
+  becomeHost,
+  formatCode,
+  isGuestSession,
+  joinSession,
+  keepCopy,
+  setCopies,
+  setFileRight,
+  setUserRight,
+  shareProject,
+  stopSession
+} from '../../lib/collab'
 import { store, toast, updateSettings, useApp, type CollabState } from '../../store'
 import { closeModal, ModalFrame } from '../Modals'
 
@@ -71,11 +85,9 @@ function NameField(): React.JSX.Element {
 
 function JoinForm({ onBack }: { onBack?: () => void }): React.JSX.Element {
   const [code, setCode] = useState('')
-  const [dir, setDir] = useState('')
   const [invalid, setInvalid] = useState(false)
-  useEffect(() => void window.api.paths().then((p) => setDir(`${p.documents.replace(/\\/g, '/')}/Lumen TeX partagés`)), [])
   const join = async (): Promise<void> => {
-    if (!(await joinSession(code, dir))) setInvalid(true)
+    if (!(await joinSession(code))) setInvalid(true)
   }
   return (
     <form
@@ -85,7 +97,10 @@ function JoinForm({ onBack }: { onBack?: () => void }): React.JSX.Element {
         void join()
       }}
     >
-      <p className="collab-intro">Saisis le code reçu : tu recevras une copie du projet et vous éditerez en même temps.</p>
+      <p className="collab-intro">
+        Saisis le code reçu : le projet s’ouvre chez toi le temps de la session et vous éditez en même temps. À la fin, il est effacé
+        de ton ordinateur (le chef de session peut te permettre d’en garder une copie).
+      </p>
       <label className="collab-field">
         <span>Code de la session</span>
         <input
@@ -102,34 +117,90 @@ function JoinForm({ onBack }: { onBack?: () => void }): React.JSX.Element {
         {invalid && <small className="collab-error">Ce code n’est pas valide : il compte 16 caractères (lettres et chiffres).</small>}
       </label>
       <NameField />
-      <label className="collab-field">
-        <span>Le projet sera enregistré dans</span>
-        <div className="input-row">
-          <input className="input" value={dir} onChange={(e) => setDir(e.target.value)} />
-          <button
-            type="button"
-            className="btn"
-            title="Choisir un dossier"
-            onClick={async () => {
-              const d = await window.api.chooseDir(dir || undefined)
-              if (d) setDir(d.replace(/\\/g, '/'))
-            }}
-          >
-            <FolderOpen size={14} />
-          </button>
-        </div>
-      </label>
       <div className="collab-actions">
         {onBack && (
           <button type="button" className="btn ghost" onClick={onBack}>
             Retour
           </button>
         )}
-        <button type="submit" className="btn primary" disabled={code.replace(/[^0-9A-Z]/gi, '').length < 16 || !dir.trim()}>
+        <button type="submit" className="btn primary" disabled={code.replace(/[^0-9A-Z]/gi, '').length < 16}>
           Rejoindre
         </button>
       </div>
     </form>
+  )
+}
+
+const USER_RIGHTS: [UserRight, string, string][] = [
+  ['ro', 'Lecture seule', 'Voit le projet et la discussion, sans rien modifier'],
+  ['rw', 'Modification', 'Modifie les fichiers existants'],
+  ['add', 'Modification et ajout', 'Modifie, crée, importe, renomme et supprime des fichiers']
+]
+const rightLabel = (r: UserRight): string => USER_RIGHTS.find(([k]) => k === r)![1]
+
+const FILE_RIGHTS: [FileRight, string, string][] = [
+  ['rw', 'Modifiable', 'Modifiable par ceux qui en ont le droit'],
+  ['ro', 'Lecture seule', 'Visible par tous, modifiable par toi seul'],
+  ['hidden', 'Invisible', 'Reste sur ton ordinateur, jamais envoyé aux autres']
+]
+
+/** Droits des fichiers du projet (chef de session) : liste repliable, un choix à trois positions par fichier */
+function FileRights({ value, onChange }: { value: Record<string, FileRight>; onChange: (path: string, r: FileRight) => void }): React.JSX.Element {
+  const files = useApp((s) => s.files)
+  const [open, setOpen] = useState(false)
+  const [filter, setFilter] = useState('')
+  const list = files.filter((f) => !f.isDir && f.path.toLowerCase().includes(filter.toLowerCase())).map((f) => f.path)
+  const special = Object.values(value).filter((r) => r !== 'rw').length
+  return (
+    <div className="collab-section">
+      <button type="button" className="collab-section-head" onClick={() => setOpen(!open)}>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Droits des fichiers
+        <small>{special ? `${special} fichier${special > 1 ? 's' : ''} protégé${special > 1 ? 's' : ''}` : 'tous modifiables'}</small>
+      </button>
+      {open && (
+        <>
+          {files.filter((f) => !f.isDir).length > 8 && (
+            <input className="input" placeholder="Rechercher un fichier" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          )}
+          <div className="collab-files">
+            {list.map((p) => (
+              <div key={p} className="collab-file">
+                <span title={p}>{p}</span>
+                <div className="segmented">
+                  {FILE_RIGHTS.map(([r, label, hint]) => (
+                    <button key={r} type="button" title={hint} className={(value[p] ?? 'rw') === r ? 'on' : ''} onClick={() => onChange(p, r)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Droit d'une personne : choix pour le chef, simple mention pour les autres */
+function PersonRight({ uid, c }: { uid: string; c: CollabState }): React.JSX.Element | null {
+  if (!c.rules.host) return null
+  if (uid === c.rules.host)
+    return (
+      <span className="collab-right host">
+        <Crown size={11} /> chef
+      </span>
+    )
+  const r = c.rules.users[uid] ?? 'ro'
+  if (!amHost()) return <span className="collab-right">{rightLabel(r)}</span>
+  return (
+    <select className="collab-right-select" value={r} title={USER_RIGHTS.find(([k]) => k === r)![2]} onChange={(e) => setUserRight(uid, e.target.value as UserRight)}>
+      {USER_RIGHTS.map(([k, label]) => (
+        <option key={k} value={k}>
+          {label}
+        </option>
+      ))}
+    </select>
   )
 }
 
@@ -154,6 +225,11 @@ function Joining({ c }: { c: CollabState }): React.JSX.Element {
 
 function InSession({ c }: { c: CollabState }): React.JSX.Element {
   const settingsName = useApp((s) => s.settings.collabName)
+  const me = useApp((s) => s.settings.collabUserId)
+  const root = useApp((s) => s.root)
+  const hidden = useApp((s) => (root ? s.settings.projects[root]?.collabHidden : undefined)) ?? []
+  const guest = isGuestSession()
+  const host = amHost()
   const copy = (): void => {
     void navigator.clipboard.writeText(formatCode(c.code))
     toast('Code copié', 'success')
@@ -161,13 +237,28 @@ function InSession({ c }: { c: CollabState }): React.JSX.Element {
   const leave = async (): Promise<void> => {
     const ok = await window.api.confirm(
       'Quitter la session partagée ?',
-      'Tes fichiers restent sur ton ordinateur, mais ne seront plus synchronisés. Pour revenir, il faudra de nouveau le code.',
+      guest
+        ? `Le projet sera effacé de ton ordinateur.${c.rules.copies ? ' Pour le conserver, garde d’abord une copie.' : ''} Pour revenir, il faudra de nouveau le code.`
+        : 'Tes fichiers restent sur ton ordinateur, mais ne seront plus synchronisés. Pour revenir, il faudra de nouveau le code.',
       'Quitter la session'
     )
     if (!ok) return
-    await stopSession({ forget: true })
     closeModal()
+    // Invité : fermer le projet met fin à la session et efface la copie de travail
+    if (guest) await closeProject()
+    else await stopSession({ forget: true })
   }
+  const keep = async (): Promise<void> => {
+    try {
+      const dest = await keepCopy()
+      if (dest) toast(`Copie enregistrée dans « ${dest.split(/[\\/]/).slice(-2).join(' / ')} »`, 'success', { label: 'Afficher', run: () => void window.api.reveal(dest) }, 8000)
+    } catch {
+      toast('La copie n’a pas pu être enregistrée', 'error')
+    }
+  }
+  const fileRights: Record<string, FileRight> = { ...c.rules.files }
+  for (const p of hidden) fileRights[p] = 'hidden'
+  const myRight = c.rules.host && c.rules.host !== me ? (c.rules.users[me] ?? 'ro') : null
   return (
     <div className="collab-body">
       <Banner c={c} />
@@ -181,17 +272,44 @@ function InSession({ c }: { c: CollabState }): React.JSX.Element {
         Envoie ce code à tes amis : il donne accès au projet, ne le partage qu’avec eux. Les ordinateurs se connectent directement,
         sans serveur.
       </p>
+      {myRight && myRight !== 'add' && (
+        <p className="collab-muted">
+          {myRight === 'ro'
+            ? 'Tu es en lecture seule : tu vois le projet et peux discuter, sans rien modifier. Le chef de session peut te donner le droit de modifier.'
+            : 'Tu peux modifier les fichiers existants, mais pas en ajouter, renommer ou supprimer.'}
+        </p>
+      )}
       <div className="collab-people">
         <div className="collab-person">
           <span className="collab-dot ok" /> {settingsName || 'Toi'} <small>(toi)</small>
+          <PersonRight uid={me} c={c} />
         </div>
         {c.people.map((p) => (
           <div key={p.id} className="collab-person">
             <span className="collab-dot" style={{ background: p.color }} /> {p.name}
             {p.file && <small>{p.file}</small>}
+            {p.uid && <PersonRight uid={p.uid} c={c} />}
           </div>
         ))}
       </div>
+      {host && (
+        <>
+          <FileRights value={fileRights} onChange={(p, r) => void setFileRight(p, r)} />
+          <label className="checkbox">
+            <input type="checkbox" checked={c.rules.copies} onChange={(e) => setCopies(e.target.checked)} /> Les invités peuvent garder une copie du
+            projet
+          </label>
+        </>
+      )}
+      {!c.rules.host && !guest && (
+        <p className="collab-muted">
+          Session créée avant les droits : tout le monde peut tout modifier.{' '}
+          <button className="link-btn" onClick={becomeHost}>
+            Devenir chef de session
+          </button>{' '}
+          pour choisir qui modifie quoi (les autres passent alors en lecture seule).
+        </p>
+      )}
       {c.tooBig.length > 0 && (
         <div className="collab-toobig">
           <strong>Non partagés (plus de 15 Mo, restent sur ton ordinateur) :</strong>
@@ -203,6 +321,11 @@ function InSession({ c }: { c: CollabState }): React.JSX.Element {
         </div>
       )}
       <div className="collab-actions">
+        {guest && c.rules.copies && (
+          <button className="btn ghost" onClick={() => void keep()}>
+            <FolderDown size={14} /> Garder une copie
+          </button>
+        )}
         <button className="btn ghost" onClick={() => void leave()}>
           <LogOut size={14} /> Quitter la session
         </button>
@@ -217,6 +340,8 @@ export default function CollabModal({ join }: { join?: boolean }): React.JSX.Ele
   const projectName = useApp((s) => s.projectName)
   const [mode, setMode] = useState<'share' | 'join'>(join || !root ? 'join' : 'share')
   const [busy, setBusy] = useState(false)
+  const [copies, setCopiesBefore] = useState(true)
+  const [files, setFiles] = useState<Record<string, FileRight>>({})
 
   let body: React.JSX.Element
   if (c.active && c.joining) body = <Joining c={c} />
@@ -230,6 +355,15 @@ export default function CollabModal({ join }: { join?: boolean }): React.JSX.Ele
           lui. Les ordinateurs se connectent directement, sans serveur ni compte.
         </p>
         <NameField />
+        <p className="collab-muted">
+          Tu seras le chef de cette session. Les personnes qui la rejoignent arrivent en lecture seule : tu pourras leur permettre de
+          modifier, et celles à qui tu l’as déjà permis dans une autre session le retrouvent.
+        </p>
+        <FileRights value={files} onChange={(p, r) => setFiles({ ...files, [p]: r })} />
+        <label className="checkbox">
+          <input type="checkbox" checked={copies} onChange={(e) => setCopiesBefore(e.target.checked)} /> Les invités peuvent garder une copie du
+          projet
+        </label>
         <div className="collab-actions">
           <button className="btn ghost" onClick={() => setMode('join')}>
             Rejoindre une autre session
@@ -239,7 +373,7 @@ export default function CollabModal({ join }: { join?: boolean }): React.JSX.Ele
             disabled={busy}
             onClick={async () => {
               setBusy(true)
-              await shareProject()
+              await shareProject({ copies, files })
               setBusy(false)
             }}
           >

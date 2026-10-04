@@ -3390,3 +3390,95 @@ button.copilot-usage.loading {
 .math-inline .katex {
   font-size: 1.05em;
 }
+
+/* Partage : droits */
+.collab-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.collab-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.collab-section-head small {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-weight: 400;
+}
+.collab-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.collab-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.collab-file > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--editor-font);
+}
+.collab-file .segmented button {
+  padding: 2px 8px;
+  font-size: 11.5px;
+}
+.collab-right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--chip);
+}
+.collab-right.host {
+  color: var(--accent);
+}
+.collab-right-select {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-raised);
+  color: var(--text);
+}
+.collab-person {
+  align-items: center;
+}
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+.tree-lock {
+  display: inline-flex;
+  color: var(--text-faint);
+  margin-left: 4px;
+}

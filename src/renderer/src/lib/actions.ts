@@ -25,7 +25,7 @@ import { refreshLint, wrapSelection } from '../editor/features'
 import { store, toast, updateSettings } from '../store'
 import { emit } from './bus'
 import { contents, removeContent, setAllContents, setFileList, updateContent } from './projectIndex'
-import { collabActive, collabDiskChanged, onProjectOpened, stopSession } from './collab'
+import { collabActive, collabAllows, collabDiskChanged, onProjectOpened, stopSession } from './collab'
 
 const api = window.api
 
@@ -203,12 +203,15 @@ export async function closeProject(): Promise<void> {
   store.set({ root: null, files: [], tabs: [], active: null, mainFile: null, pdf: null, diagnostics: [], result: null, dirty: {} })
   api.setDirty(false)
   document.title = 'Lumen TeX'
+  // Copie de travail d'un invité : la session est finie pour lui, rien n'en reste
+  await api.collabDropGuest(root)
+  store.set({ settings: await api.getSettings() })
 }
 
 function persistTabs(): void {
   const { root, tabs, active, mainFile, settings } = store.get()
   if (!root) return
-  const projects = { ...settings.projects, [root]: { mainFile: mainFile ?? undefined, openTabs: tabs, active } }
+  const projects = { ...settings.projects, [root]: { ...settings.projects[root], mainFile: mainFile ?? undefined, openTabs: tabs, active } }
   void updateSettings({ projects })
 }
 
@@ -351,6 +354,7 @@ function validName(name: string): boolean {
 
 export async function createEntry(dir: string, name: string, isDir: boolean): Promise<void> {
   const { root } = store.get()
+  if (!collabAllows('add')) return
   if (!root || !validName(name)) {
     toast('Nom invalide', 'error')
     return
@@ -372,7 +376,7 @@ export async function createEntry(dir: string, name: string, isDir: boolean): Pr
 /** Crée un fichier avec un nom libre dans le projet (« nom-2.tex » si déjà pris) et l'ouvre */
 export async function createFileWith(baseName: string, ext: string, content: string): Promise<string | null> {
   const { root, files } = store.get()
-  if (!root) return null
+  if (!root || !collabAllows('add')) return null
   const base = baseName.replace(/[\\/:*?"<>|]/g, '-').trim() || 'document'
   const taken = new Set(files.map((f) => f.path.toLowerCase()))
   let rel = `${base}${ext}`
@@ -397,7 +401,7 @@ export async function renameEntry(from: string, toName: string): Promise<void> {
 /** Renomme ou déplace un fichier ou dossier (chemins relatifs au projet), en suivant onglets, fichier principal et index */
 export async function moveEntry(from: string, to: string): Promise<void> {
   const { root, tabs, mainFile, active } = store.get()
-  if (!root || to === from) return
+  if (!root || to === from || !collabAllows('add') || !collabAllows('write', from)) return
   if (to.startsWith(from + '/')) {
     toast('Impossible de déplacer un dossier dans lui-même', 'error')
     return
@@ -429,7 +433,7 @@ export async function followMove(from: string, to: string): Promise<void> {
 
 export async function deleteEntry(path: string, isDir: boolean): Promise<void> {
   const { root } = store.get()
-  if (!root) return
+  if (!root || !collabAllows('write', path)) return
   const ok = await api.confirm(
     `Placer « ${basename(path)} » dans la corbeille ?`,
     isDir ? 'Le dossier et tout son contenu seront déplacés dans la corbeille.' : 'Vous pourrez le récupérer depuis la corbeille.',
@@ -449,7 +453,7 @@ export async function deleteEntry(path: string, isDir: boolean): Promise<void> {
 
 export async function importFiles(paths: string[], destDir: string): Promise<string[]> {
   const { root } = store.get()
-  if (!root) return []
+  if (!root || !collabAllows('add')) return []
   const out: string[] = []
   for (const p of paths) {
     try {
