@@ -15,6 +15,7 @@
     "dist": "electron-vite build && electron-builder --mac --publish never --config.directories.output=release",
     "pack": "electron-vite build && electron-builder --mac dir",
     "pack:win": "electron-vite build && electron-builder --win dir",
+    "dist:linux": "electron-vite build && electron-builder --linux --publish never --config.directories.output=release",
     "dist:win": "electron-vite build && electron-builder --win nsis --config.directories.output=release --publish never",
     "release:win": "npm run dist:win && gh release create v%npm_package_version% release/Lumen-TeX-Setup-%npm_package_version%.exe release/Lumen-TeX-Setup-%npm_package_version%.exe.blockmap release/latest.yml --repo LucasHenocq/LumenTEX --target main --title %npm_package_version% --notes-file build/release-notes.md --generate-notes"
   },

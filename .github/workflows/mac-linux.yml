@@ -1,0 +1,94 @@
+# Versions macOS (Apple Silicon et Intel) et Linux (AppImage, .deb), fabriquées sur les machines gratuites de GitHub
+# pour les dépôts publics. Se lance tout seul à la publication d'une release (npm run release:win) et y ajoute les fichiers.
+# Lancement à la main (onglet Actions) : fabrique la branche choisie ; avec un tag, ajoute les fichiers à cette release,
+# sans tag, les joint seulement au résultat, pour essai.
+name: Versions macOS et Linux
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release à compléter (ex. v1.2.1) ; vide pour un simple essai
+        required: false
+      systems:
+        description: Systèmes à fabriquer
+        default: mac linux
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  mac:
+    if: github.event_name == 'release' || contains(inputs.systems, 'mac')
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Fabrication (arm64 et x64)
+        run: npm run dist
+        env:
+          # Pas de certificat Apple : signature « ad hoc » (identity "-" dans electron-builder.yml)
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Ajout à la release
+        if: env.TAG != ''
+        run: gh release upload "$TAG" release/*.dmg --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Résultat de l'essai
+        if: env.TAG == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-tex-macos
+          path: release/*.dmg
+          retention-days: 7
+
+  linux:
+    if: github.event_name == 'release' || contains(inputs.systems, 'linux')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Fabrication (AppImage et .deb)
+        run: npm run dist:linux
+
+      # latest-linux.yml : lu par les mises à jour automatiques
+      - name: Ajout à la release
+        if: env.TAG != ''
+        run: gh release upload "$TAG" release/*.AppImage release/*.deb release/latest-linux.yml --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Résultat de l'essai
+        if: env.TAG == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-tex-linux
+          path: |
+            release/*.AppImage
+            release/*.deb
+          retention-days: 7

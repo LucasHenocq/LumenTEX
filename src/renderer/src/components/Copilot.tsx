@@ -269,7 +269,7 @@ function GeminiKeyForm({ onStatus }: { onStatus: (s: AiStatus) => void }): React
         </button>
       </div>
       <small className="cv-muted">
-        Chiffrée par {window.api.platform === 'darwin' ? 'le trousseau macOS' : 'Windows'}, jamais envoyée ailleurs qu’à Google.
+        Chiffrée par {window.api.platform === 'darwin' ? 'le trousseau macOS' : window.api.platform === 'win32' ? 'Windows' : 'le trousseau du système'}, jamais envoyée ailleurs qu’à Google.
       </small>
       {error && <span className="copilot-gate-error">⚠ {error}</span>}
     </form>

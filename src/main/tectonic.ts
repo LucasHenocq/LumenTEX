@@ -70,7 +70,9 @@ export async function installTectonic(onProgress: (p: InstallProgress) => void):
   // Windows : seule une version x86_64 existe (tourne aussi en émulation sur ARM).
   const file = WIN
     ? `tectonic-${TECTONIC_VERSION}-x86_64-pc-windows-msvc.zip`
-    : `tectonic-${TECTONIC_VERSION}-${arch}-apple-darwin.tar.gz`
+    : process.platform === 'linux'
+      ? `tectonic-${TECTONIC_VERSION}-${arch}-unknown-linux-musl.tar.gz`
+      : `tectonic-${TECTONIC_VERSION}-${arch}-apple-darwin.tar.gz`
   const url = `https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${TECTONIC_VERSION}/${file}`
   const dir = bundledDir()
   fs.mkdirSync(dir, { recursive: true })

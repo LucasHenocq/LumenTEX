@@ -148,7 +148,7 @@ export default function FileTree(): React.JSX.Element {
       if (!node.isDir && /\.tex$/i.test(node.path) && node.path !== mainFile) items.push({ id: 'insert-input', label: 'Insérer \\input' })
       if (!node.isDir && CONVERTIBLE.test(node.path)) items.push({ id: 'convert', label: 'Convertir en LaTeX avec l’IA…' })
       items.push(
-        { id: 'reveal', label: window.api.platform === 'darwin' ? 'Afficher dans le Finder' : 'Afficher dans l’Explorateur' },
+        { id: 'reveal', label: window.api.platform === 'darwin' ? 'Afficher dans le Finder' : window.api.platform === 'win32' ? 'Afficher dans l’Explorateur' : 'Afficher dans le dossier' },
         { type: 'separator' } as never,
         { id: 'delete', label: 'Mettre à la corbeille', accelerator: window.api.platform === 'darwin' ? 'Cmd+Backspace' : 'Delete' }
       )
