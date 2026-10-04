@@ -72,6 +72,8 @@ export interface AppState {
   pdfScale: number
   resolvedDark: boolean
   collab: CollabState
+  /** macOS : téléchargement de la mise à jour en cours (pourcentage) */
+  updateProgress: number | null
 }
 
 type Listener = () => void
@@ -130,6 +132,7 @@ export const store = createStore<AppState>({
   pdfPages: 0,
   pdfScale: 1,
   resolvedDark: false,
+  updateProgress: null,
   collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [] }
 })
 

@@ -1,7 +1,7 @@
 {
   "name": "lumen-tex",
   "productName": "Lumen TeX",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Éditeur LaTeX moderne avec aperçu PDF en direct",
   "main": "./out/main/index.js",
   "author": "Lucas Henocq",
@@ -12,11 +12,11 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "dist": "electron-vite build && electron-builder --mac",
+    "dist": "electron-vite build && electron-builder --mac --publish never --config.directories.output=release",
     "pack": "electron-vite build && electron-builder --mac dir",
     "pack:win": "electron-vite build && electron-builder --win dir",
     "dist:win": "electron-vite build && electron-builder --win nsis --config.directories.output=release --publish never",
-    "release:win": "npm run dist:win && gh release create v%npm_package_version% release/Lumen-TeX-Setup-%npm_package_version%.exe release/Lumen-TeX-Setup-%npm_package_version%.exe.blockmap release/latest.yml --repo LucasHenocq/LumenTEX --target main --title %npm_package_version% --generate-notes"
+    "release:win": "npm run dist:win && gh release create v%npm_package_version% release/Lumen-TeX-Setup-%npm_package_version%.exe release/Lumen-TeX-Setup-%npm_package_version%.exe.blockmap release/latest.yml --repo LucasHenocq/LumenTEX --target main --title %npm_package_version% --notes-file build/release-notes.md --generate-notes"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.3",

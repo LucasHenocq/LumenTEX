@@ -18,18 +18,20 @@ import { BUILD_DIR, buildPaths, cancelCompile, compile } from './compiler'
 import { addRecent, flushSettings, getSettings, setSettings } from './store'
 import { forwardSearch, reverseSearch } from './synctex'
 import { findTectonic, installTectonic } from './tectonic'
-import { askClaude, claudeStatus, installClaude, loginClaude, resetClaude, stopClaude } from './claude'
+import { askClaude, claudeStatus, claudeUsage, installClaude, loginClaude, resetClaude, stopClaude } from './claude'
 import { askCopilot, copilotModels, copilotStatus, installCopilot, loginCopilot, resetCopilot, stopCopilot } from './ghcopilot'
 import { askGemini, geminiStatus, installGemini, resetGemini, setGeminiKey, stopGemini } from './gemini'
 import { cancelLogin, sendLoginCode } from './login'
 import { askOllama, ollamaStatus, pullOllamaModel, startOllama, stopOllama } from './ollama'
 import { buildDocs, docsStatus, userDocsDir } from './docs'
+import { checkMacUpdate, installMacUpdate, type MacUpdate } from './macUpdate'
 import { collabStatus, newCode, normalizeCode, sendCollab, startCollab, stopCollab } from './collab'
 import { discard, discardAll, prepareData, prepareFile, runConvert, stopConvert } from './convert'
 
 app.setName('Lumen TeX')
-// Windows : identité de l'app pour ses notifications (même identifiant que l'installeur)
-if (process.platform === 'win32') app.setAppUserModelId('com.lumentex.app')
+// Windows : identité de l'app pour ses notifications (même identifiant que l'installeur). Seulement pour l'app
+// installée : une copie de développement (electron.exe) associerait sinon cette identité au logo d'Electron
+if (process.platform === 'win32' && app.isPackaged) app.setAppUserModelId('com.lumentex.app')
 if (process.env.LUMEN_USER_DATA) app.setPath('userData', process.env.LUMEN_USER_DATA)
 
 let win: BrowserWindow | null = null
@@ -667,6 +669,7 @@ function registerIpc(): void {
   ipcMain.handle('ai:claude', (_e, root: string, prompt: string) =>
     askClaude(root, prompt, (t) => send('ai:chunk', t), (u) => send('ai:usage', u))
   )
+  ipcMain.handle('ai:claude-usage', () => claudeUsage())
   ipcMain.handle('ai:claude-reset', (_e, root: string) => resetClaude(root))
   ipcMain.handle('pdf:read', (_e, p: string) => {
     try {
@@ -778,7 +781,20 @@ void app.whenReady().then(() => {
   createWindow()
   // Mises à jour depuis les releases GitHub (app installée seulement) : téléchargée en arrière-plan,
   // installée au prochain « Redémarrer » ou à la fermeture
-  if (app.isPackaged) {
+  const updateEvery = Number(process.env.LUMEN_UPDATE_EVERY_MS) || 4 * 60 * 60 * 1000
+  if (app.isPackaged && process.platform === 'darwin') {
+    // macOS : pas d'installation automatique sans signature Apple ; annonce, puis .dmg ouvert sur demande
+    let pending: MacUpdate | null = null
+    const check = async (): Promise<void> => {
+      const u = await checkMacUpdate()
+      if (!u || u.version === pending?.version) return
+      pending = u
+      send('app:update-available', u.version)
+    }
+    void check()
+    setInterval(() => void check(), updateEvery)
+    ipcMain.handle('app:install-mac-update', () => pending && installMacUpdate(pending, win, (p) => send('app:update-progress', p)))
+  } else if (app.isPackaged) {
     // Une seule annonce par version téléchargée (les vérifications suivantes la retrouvent déjà prête)
     let announced = ''
     autoUpdater.on('update-downloaded', (info) => {
@@ -791,7 +807,7 @@ void app.whenReady().then(() => {
     const check = (): void => void autoUpdater.checkForUpdates().catch(() => {})
     check()
     // App laissée ouverte plusieurs jours : nouvelle vérification toutes les 4 heures (LUMEN_UPDATE_EVERY_MS : tests)
-    setInterval(check, Number(process.env.LUMEN_UPDATE_EVERY_MS) || 4 * 60 * 60 * 1000)
+    setInterval(check, updateEvery)
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

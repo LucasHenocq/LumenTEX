@@ -56,7 +56,7 @@ export interface Settings {
   collabSessions: Record<string, { code: string; chatRead?: number }>
   /** Identifiant stable de l'utilisateur dans les sessions (reconnaître ses propres messages) */
   collabUserId: string
-  /** Notifications Windows des messages quand Lumen TeX est en arrière-plan */
+  /** Notifications du système des messages quand Lumen TeX est en arrière-plan */
   collabNotify: boolean
   /** Dernière version dont les nouveautés ont été présentées (vide : jamais) */
   lastSeenVersion: string

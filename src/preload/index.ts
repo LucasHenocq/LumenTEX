@@ -44,6 +44,9 @@ const api = {
   setDirty: (dirty: boolean): void => ipcRenderer.send('app:dirty', dirty),
   closeNow: (): void => ipcRenderer.send('app:close-now'),
   onUpdateReady: (cb: (version: string) => void) => on<[string]>('app:update-ready', cb),
+  onUpdateAvailable: (cb: (version: string) => void) => on<[string]>('app:update-available', cb),
+  onUpdateProgress: (cb: (percent: number) => void) => on<[number]>('app:update-progress', cb),
+  installMacUpdate: (): Promise<void> => invoke('app:install-mac-update'),
   installUpdate: (): Promise<void> => invoke('app:install-update'),
   focusWindow: (): void => ipcRenderer.send('app:focus'),
   pendingOpen: (): Promise<string | null> => invoke('app:pending-open'),
@@ -76,6 +79,7 @@ const api = {
     invoke('compile:paths', root, main),
   cleanBuild: (root: string): Promise<boolean> => invoke('compile:clean', root),
   aiClaude: (root: string, prompt: string): Promise<void> => invoke('ai:claude', root, prompt),
+  aiClaudeUsage: (): Promise<{ fiveHour?: number; fiveHourResetsAt?: number; sevenDay?: number } | null> => invoke('ai:claude-usage'),
   aiClaudeReset: (root: string): Promise<void> => invoke('ai:claude-reset', root),
   onAiUsage: (cb: (u: { fiveHour?: number; fiveHourResetsAt?: number; sevenDay?: number }) => void) =>
     on<[{ fiveHour?: number; fiveHourResetsAt?: number; sevenDay?: number }]>('ai:usage', cb),

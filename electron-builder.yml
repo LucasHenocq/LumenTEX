@@ -8,11 +8,16 @@ files:
   - package.json
 # Modules natifs de Hyperswarm (udx, sodium) : binaires précompilés fournis, pas de recompilation
 npmRebuild: false
+# macOS, sans compte développeur Apple : signature « ad hoc » (sans elle, macOS déclare l'app « endommagée » sur
+# les Mac Apple Silicon) ; le hardened runtime ne sert qu'à la notarisation, qui demande ce compte
 mac:
   category: public.app-category.productivity
+  identity: "-"
+  hardenedRuntime: false
   target:
     - target: dmg
-    - target: zip
+      arch: [arm64, x64]
+  artifactName: Lumen-TeX-${version}-${arch}.${ext}
   icon: build/icon.png
 win:
   icon: build/icon.png

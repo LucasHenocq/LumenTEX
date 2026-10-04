@@ -295,6 +295,15 @@ export function renderMath(tex: string, display: boolean): string {
   })
 }
 
+/** Rendu KaTeX, ou null si la formule n'est pas valide (le texte brut est alors affiché) */
+export function renderMathOrNull(tex: string, display: boolean): string | null {
+  try {
+    return katex.renderToString(tex, { displayMode: display, throwOnError: true, strict: false, trust: false, macros: { ...userMacros() } })
+  } catch {
+    return null
+  }
+}
+
 export const mathHover = hoverTooltip(
   (view, pos): Tooltip | null => {
     const region = findMath(view.state, pos)

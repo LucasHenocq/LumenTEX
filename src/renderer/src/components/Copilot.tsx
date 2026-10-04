@@ -1,5 +1,5 @@
 import { ArrowUp, ChevronDown, ChevronUp, CornerDownLeft, Download, FileText, KeyRound, LogIn, Paperclip, Play, Sparkles, Square, Trash2, Wrench, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { CONVERTIBLE } from '../../../shared/convert'
 import type { AiEngine, AiStatus } from '../../../shared/types'
 import { getActivePath, getView, textOf } from '../editor/setup'
@@ -8,6 +8,7 @@ import { on } from '../lib/bus'
 import { highlightTex } from '../lib/texHighlight'
 import { contents } from '../lib/projectIndex'
 import { store, updateSettings, useApp } from '../store'
+import { withDisplayMath, withInlineMath } from '../lib/mathText'
 
 type Msg = { role: 'user' | 'assistant'; content: string }
 
@@ -89,23 +90,32 @@ async function agentPrompt(question: string, files: Attached[]): Promise<string>
 
 type Usage = { fiveHour?: number; fiveHourResetsAt?: number; sevenDay?: number }
 
-function UsageBadge({ u }: { u: Usage }): React.JSX.Element | null {
-  if (u.fiveHour === undefined) return null
-  const reset = u.fiveHourResetsAt ? new Date(u.fiveHourResetsAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '?'
+/** Heure de réinitialisation : « 00:20 », ou « dim. 00:20 » si ce n'est pas aujourd'hui */
+function resetLabel(ts?: number): string {
+  if (!ts) return '?'
+  const d = new Date(ts * 1000)
+  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString('fr-FR', { weekday: 'short' })} ${time}`
+}
+
+/** Utilisation du forfait Claude : cliquer l'actualise (sans consommer de quota) */
+function UsageBadge({ u, loading, onRefresh }: { u: Usage; loading: boolean; onRefresh: () => void }): React.JSX.Element {
   const week = u.sevenDay !== undefined ? ` · semaine : ${Math.round(u.sevenDay * 100)} %` : ''
+  const title =
+    u.fiveHour === undefined
+      ? 'Utilisation de ta session de 5 h de Claude · cliquer pour actualiser'
+      : `Session de 5 h de Claude : réinitialisée à ${resetLabel(u.fiveHourResetsAt)}${week} · cliquer pour actualiser`
   return (
-    <span className="copilot-usage" title={`Session de 5 h de Claude : réinitialisée à ${reset}${week}`}>
-      5h : {Math.round(u.fiveHour * 100)} %
-    </span>
+    <button className={`copilot-usage${loading ? ' loading' : ''}`} title={title} disabled={loading} onClick={onRefresh}>
+      5h : {u.fiveHour === undefined ? '—' : `${Math.round(u.fiveHour * 100)} %`}
+    </button>
   )
 }
 
-/** Mise en forme en ligne : `code`, **gras**, *italique* */
-export function inline(text: string): React.ReactNode[] {
-  return text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/).map((s, i) =>
-    s.length > 2 && s.startsWith('`') ? (
-      <code key={i}>{highlightTex(s.slice(1, -1))}</code>
-    ) : s.length > 4 && s.startsWith('**') ? (
+/** **gras** et *italique* */
+function emphasis(text: string): React.ReactNode[] {
+  return text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*)/).map((s, i) =>
+    s.length > 4 && s.startsWith('**') ? (
       <strong key={i}>{inline(s.slice(2, -2))}</strong>
     ) : s.length > 2 && s.startsWith('*') ? (
       <em key={i}>{s.slice(1, -1)}</em>
@@ -113,6 +123,25 @@ export function inline(text: string): React.ReactNode[] {
       s
     )
   )
+}
+
+/** Mise en forme en ligne : `code` (jamais interprété), formules LaTeX rendues, **gras**, *italique* */
+export function inline(text: string): React.ReactNode[] {
+  return text.split(/(`[^`\n]+`)/).map((s, i) =>
+    i % 2 ? (
+      <code key={i}>{highlightTex(s.slice(1, -1))}</code>
+    ) : (
+      <Fragment key={i}>{withInlineMath(s, (part, k) => <Fragment key={k}>{emphasis(part)}</Fragment>)}</Fragment>
+    )
+  )
+}
+
+/** Lignes d'un texte, avec les formules centrées ($$…$$, \[…\]) rendues à part, même sur plusieurs lignes */
+export function linesWithMath(text: string, line: (l: string, i: number) => React.ReactNode): React.ReactNode[] {
+  return withDisplayMath(text, (part, k) => {
+    const lines = part.replace(/^\n|\n$/g, '').split('\n')
+    return part.trim() ? <Fragment key={k}>{lines.map(line)}</Fragment> : null
+  })
 }
 
 /** Une ligne de Markdown : titre, puce, liste numérotée ou texte */
@@ -137,7 +166,7 @@ function textBlocks(text: string, key: number): React.ReactNode[] {
   let para: string[] = []
   const flush = (): void => {
     const t = para.join('\n').trim()
-    if (t) out.push(<div key={`${key}-${out.length}`} className="copilot-text">{t.split('\n').map(mdLine)}</div>)
+    if (t) out.push(<div key={`${key}-${out.length}`} className="copilot-text">{linesWithMath(t, mdLine)}</div>)
     para = []
   }
   for (const line of text.split('\n')) {
@@ -481,6 +510,17 @@ export default function Copilot(): React.JSX.Element {
     []
   )
   useEffect(() => window.api.onAiUsage(setUsage), [])
+  const [usageLoading, setUsageLoading] = useState(false)
+  const refreshUsage = async (): Promise<void> => {
+    setUsageLoading(true)
+    const u = await window.api.aiClaudeUsage().catch(() => null)
+    if (u) setUsage(u)
+    setUsageLoading(false)
+  }
+  // Affiché dès que Claude est prêt, sans attendre une première question
+  useEffect(() => {
+    if (engine === 'claude' && ready) void refreshUsage()
+  }, [engine, ready])
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' })
   }, [msgs])
@@ -629,7 +669,7 @@ export default function Copilot(): React.JSX.Element {
           </select>
         )}
         <span className="copilot-spacer" />
-        {engine === 'claude' && <UsageBadge u={usage} />}
+        {engine === 'claude' && ready && <UsageBadge u={usage} loading={usageLoading} onRefresh={() => void refreshUsage()} />}
         <button className="icon-btn subtle" title="Nouvelle conversation" disabled={busy} onClick={resetChat}>
           <Trash2 size={13} />
         </button>

@@ -3363,3 +3363,30 @@ button.settings-version:hover {
 .collab-toobig small {
   color: var(--text-faint);
 }
+button.copilot-usage {
+  border: none;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.copilot-usage:hover:not(:disabled) {
+  filter: brightness(1.15);
+  text-decoration: underline;
+}
+button.copilot-usage.loading {
+  opacity: 0.6;
+  cursor: progress;
+}
+/* Formules LaTeX rendues (réponses de l'IA, discussion) */
+.math-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+.math-display .katex-display {
+  margin: 0.4em 0;
+}
+.math-inline .katex {
+  font-size: 1.05em;
+}

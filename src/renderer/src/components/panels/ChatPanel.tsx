@@ -6,7 +6,7 @@ import { openFile } from '../../lib/actions'
 import { chatVisible, isMine, markChatRead, sendChat, setTyping } from '../../lib/collab'
 import { highlightTex } from '../../lib/texHighlight'
 import { updateSettings, useApp } from '../../store'
-import { inline } from '../Copilot'
+import { inline, linesWithMath } from '../Copilot'
 
 const GROUP_MS = 3 * 60 * 1000
 const URL = /(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"»])/
@@ -22,9 +22,9 @@ function dayLabel(ts: number): string {
   return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-/** Texte d'un message : liens cliquables, `code` et **gras** */
+/** Texte d'un message : liens cliquables, formules LaTeX rendues, `code` et **gras** */
 function richText(text: string): React.ReactNode[] {
-  return text.split('\n').map((line, i) => (
+  return linesWithMath(text, (line, i) => (
     <div key={i}>
       {line
         ? line.split(URL).map((part, j) =>
@@ -139,7 +139,7 @@ export default function ChatPanel(): React.JSX.Element {
         <div className="panel-actions">
           <button
             className="icon-btn subtle"
-            title={notify ? 'Notifications Windows activées (Lumen TeX en arrière-plan)' : 'Notifications Windows désactivées'}
+            title={notify ? 'Notifications du système activées (Lumen TeX en arrière-plan)' : 'Notifications du système désactivées'}
             onClick={() => void updateSettings({ collabNotify: !notify })}
           >
             {notify ? <Bell size={14} /> : <BellOff size={14} />}

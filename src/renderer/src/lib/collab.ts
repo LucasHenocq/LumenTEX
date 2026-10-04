@@ -241,7 +241,7 @@ export function openChat(): void {
   if (!store.get().settings.sidebarVisible) void updateSettings({ sidebarVisible: true })
 }
 
-/** Nouveau message d'un autre participant : bulle dans l'app, ou notification Windows si l'app est en arrière-plan */
+/** Nouveau message d'un autre participant : bulle dans l'app, ou notification du système si l'app est en arrière-plan */
 function notifyMessage(m: ChatMessage): void {
   if (chatVisible()) return
   const body = m.text || (m.ref ? `📍 ${m.ref.file} : ${m.ref.line}` : '')

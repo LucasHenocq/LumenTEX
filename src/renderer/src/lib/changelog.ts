@@ -6,6 +6,16 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.2.1',
+    date: '2026-10-04',
+    items: [
+      'Version macOS (Mac Apple et Intel) : une notification annonce chaque mise à jour, que Lumen TeX télécharge et ouvre, prête à glisser dans Applications.',
+      'Les formules écrites par l’IA (et dans la discussion de session) s’affichent mises en forme, et plus en caractères LaTeX bruts.',
+      'Claude : un clic sur « 5h : … % » actualise l’utilisation, qui manquait parfois ou datait.',
+      'L’icône de Lumen TeX s’affiche correctement dans la barre des tâches.'
+    ]
+  },
+  {
     version: '1.2.0',
     date: '2026-10-03',
     items: [

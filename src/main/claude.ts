@@ -68,6 +68,49 @@ export function installClaude(onProgress: (msg: string) => void): Promise<AiStat
   })
 }
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+/** « Oct 5, 12:20am » ou « 3pm » (heure locale) → horodatage en secondes */
+function parseReset(text?: string): number | undefined {
+  const m = /(?:([A-Za-z]{3})[a-z]* (\d{1,2}),? )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i.exec(text ?? '')
+  if (!m) return undefined
+  const now = new Date()
+  const hour = (Number(m[3]) % 12) + (m[5].toLowerCase() === 'pm' ? 12 : 0)
+  const d = m[1]
+    ? new Date(now.getFullYear(), MONTHS.indexOf(m[1].toLowerCase()), Number(m[2]), hour, Number(m[4] ?? 0))
+    : new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, Number(m[4] ?? 0))
+  if (!m[1] && d < now) d.setDate(d.getDate() + 1)
+  if (d.getTime() < now.getTime() - 180 * 864e5) d.setFullYear(d.getFullYear() + 1) // passage d'année
+  return Math.floor(d.getTime() / 1000)
+}
+
+/**
+ * Utilisation du forfait sans consommer de quota : la commande /usage de Claude Code répond sans appeler le
+ * modèle (« Current session: 24% used · resets Oct 5, 12:20am »). null si indisponible ou format inconnu
+ */
+export function claudeUsage(): Promise<ClaudeUsage | null> {
+  return new Promise((resolve) => {
+    const c = spawn(claudeBin(), ['-p', '--output-format', 'json', '--setting-sources', 'project'], { env: process.env })
+    let out = ''
+    const timer = setTimeout(() => c.kill(), 30000)
+    c.stdout.on('data', (d: Buffer) => (out += d.toString('utf8')))
+    c.on('error', () => resolve(null))
+    c.on('close', () => {
+      clearTimeout(timer)
+      try {
+        const text = String((JSON.parse(out) as { result?: string }).result ?? '')
+        const session = /Current session:\s*(\d+)% used(?:\s*·\s*resets ([^\n(]+))?/i.exec(text)
+        const week = /Current week[^:\n]*:\s*(\d+)% used/i.exec(text)
+        if (!session) return resolve(null)
+        resolve({ fiveHour: Number(session[1]) / 100, fiveHourResetsAt: parseReset(session[2]), sevenDay: week ? Number(week[1]) / 100 : undefined })
+      } catch {
+        resolve(null)
+      }
+    })
+    c.stdin.end('/usage')
+  })
+}
+
 export function resetClaude(root: string): void {
   sessions.delete(root)
 }

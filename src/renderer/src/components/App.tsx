@@ -30,6 +30,22 @@ export default function App(): React.JSX.Element {
     const offs = [
       api.onMenu((id) => runCommand(id)),
       api.onOpenPath((p) => void openPath(p)),
+      // macOS : l'app télécharge le .dmg et l'ouvre (fenêtre « glisser dans Applications »)
+      api.onUpdateAvailable((version) =>
+        toast(
+          `Lumen TeX ${version} est disponible`,
+          'success',
+          {
+            label: 'Installer',
+            run: () => {
+              store.set({ updateProgress: 0 })
+              void api.installMacUpdate().finally(() => store.set({ updateProgress: null }))
+            }
+          },
+          120000
+        )
+      ),
+      api.onUpdateProgress((p) => store.set({ updateProgress: p })),
       api.onUpdateReady((version) =>
         toast(`Lumen TeX ${version} est prêt à être installé`, 'success', { label: 'Redémarrer', run: () => void saveAll().then(() => api.installUpdate()) }, 120000)
       ),

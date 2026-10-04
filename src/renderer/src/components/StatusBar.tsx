@@ -5,6 +5,12 @@ import { collabMessage } from './modals/CollabModal'
 import { useUnreadChat } from './ActivityBar'
 import { openChat } from '../lib/collab'
 
+/** macOS : téléchargement de la mise à jour */
+function UpdateProgress(): React.JSX.Element | null {
+  const p = useApp((s) => s.updateProgress)
+  return p === null ? null : <span className="sb-item">Mise à jour : {p} %</span>
+}
+
 /** Session partagée : pastille cliquable (connectés, recherche, hors ligne) */
 function CollabIndicator(): React.JSX.Element | null {
   const c = useApp((s) => s.collab)
@@ -93,6 +99,7 @@ export default function StatusBar(): React.JSX.Element {
         </button>
       </div>
       <div className="sb-right">
+        <UpdateProgress />
         <CollabIndicator />
         {vim && <span className="sb-item sb-vim">VIM</span>}
         {active && (

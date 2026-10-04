@@ -19,4 +19,7 @@
 
 ## Télécharger
 
-Dernière version pour Windows : **[Releases](https://github.com/LucasHenocq/LumenTEX/releases/latest)** → `Lumen-TeX-Setup-<version>.exe`.
+Dernière version : **[Releases](https://github.com/LucasHenocq/LumenTEX/releases/latest)** :
+
+- **Windows** : `Lumen-TeX-Setup-<version>.exe`.
+- **macOS** : `Lumen-TeX-<version>-arm64.dmg` (Mac Apple M1 et suivants) ou `-x64.dmg` (Mac Intel). Glisser Lumen TeX dans Applications ; au premier lancement, Réglages Système → Confidentialité et sécurité → « Ouvrir quand même ».
