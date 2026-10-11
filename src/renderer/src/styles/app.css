@@ -3482,3 +3482,185 @@ button.copilot-usage.loading {
   color: var(--text-faint);
   margin-left: 4px;
 }
+
+/* ==========================================================================
+   Lean : coches des preuves, panneau Lean
+   ========================================================================== */
+
+.cm-proof-gutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  padding: 0 !important;
+}
+.proof-mark {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 4px;
+  padding: 1px 2px;
+}
+.proof-mark:hover {
+  background: var(--chip);
+}
+.proof-mark.ok {
+  color: var(--success);
+}
+.proof-mark.fail {
+  color: var(--danger);
+}
+.proof-mark.stale {
+  color: var(--warning);
+}
+.proof-mark.none {
+  color: var(--text-faint);
+  opacity: 0.6;
+}
+.proof-mark.none:hover {
+  opacity: 1;
+}
+.proof-mark.running {
+  color: var(--accent);
+  animation: copilot-blink 1s infinite;
+}
+
+.lean-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+.lean-bar {
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 12px;
+}
+.lean-title {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.lean-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.lean-state.good {
+  color: var(--success);
+}
+.lean-state.bad {
+  color: var(--danger);
+}
+.lean-state.warn {
+  color: var(--warning);
+}
+.lean-proof {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.lean-proof .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lean-body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px 24px;
+  user-select: text;
+}
+.lean-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.lean-section .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.lean-muted {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.lean-goal,
+.lean-msg pre {
+  margin: 0;
+  font-family: var(--editor-font);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lean-goal {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: var(--editor-bg);
+  border: 1px solid var(--border);
+}
+.lean-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border: none;
+  border-left: 3px solid var(--text-faint);
+  border-radius: 4px;
+  background: var(--editor-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.lean-msg.error {
+  border-left-color: var(--danger);
+}
+.lean-msg.warning {
+  border-left-color: var(--warning);
+}
+.lean-msg-line {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.lean-progress {
+  flex-wrap: wrap;
+}
+.lean-progress .progress {
+  flex: 1 1 100%;
+}
+.lean-progress-detail {
+  flex: 1 1 100%;
+  font-family: var(--editor-font);
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lean-error {
+  font-size: 12px;
+  color: var(--danger);
+}

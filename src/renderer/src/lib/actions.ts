@@ -26,10 +26,11 @@ import { store, toast, updateSettings } from '../store'
 import { emit } from './bus'
 import { contents, removeContent, setAllContents, setFileList, updateContent } from './projectIndex'
 import { collabActive, collabAllows, collabDiskChanged, onProjectOpened, stopSession } from './collab'
+import { isLean, leanChanged, leanClosed, leanShown, refreshGoals } from './lean'
 
 const api = window.api
 
-export const TEXT_FILE = /\.(tex|bib|sty|cls|bst|txt|md|ltx|dtx|ins|cfg|def|clo|bbx|cbx|lbx|tikz|pgf|csv|dat|json|ya?ml|latexmkrc|log)$/i
+export const TEXT_FILE = /\.(tex|bib|sty|cls|bst|txt|md|ltx|dtx|ins|cfg|def|clo|bbx|cbx|lbx|tikz|pgf|csv|dat|json|ya?ml|latexmkrc|log|lean)$/i
 export const IMAGE_FILE = /\.(png|jpe?g|gif|bmp|svg|webp|tiff?)$/i
 
 const basename = (p: string): string => p.slice(p.lastIndexOf('/') + 1)
@@ -62,6 +63,7 @@ let wordTimer: number | undefined
 
 hooks.onDocChanged = (path, state) => {
   refreshDirty(path)
+  if (isLean(path)) leanChanged(path, state)
   clearTimeout(indexTimer)
   indexTimer = window.setTimeout(() => updateContent(path, state.doc.toString()), 400)
   const s = store.get().settings
@@ -76,6 +78,7 @@ hooks.onSelection = (state) => {
   const sel = state.selection.main
   const line = state.doc.lineAt(sel.head)
   store.set({ cursor: { line: line.number, col: sel.head - line.from + 1, sel: Math.abs(sel.to - sel.from) } })
+  if (isLean(getActivePath())) refreshGoals()
 }
 
 hooks.syncForward = (path, line) => void syncForward(path, line)
@@ -138,6 +141,7 @@ export async function openProject(root: string, opts: { openFile?: string } = {}
   // Fichiers mémorisés (onglets, principal) absents du listage mais toujours présents sur le disque
   const listed = new Set(files.map((f) => f.path))
   for (const p of new Set([...(prefs.openTabs ?? []), ...(prefs.mainFile ? [prefs.mainFile] : [])])) {
+    if (p.startsWith('.lumentex/')) continue
     if (listed.has(p) || !(await api.stat(`${root}/${p}`)).exists) continue
     files = [...files, { path: p, isDir: false }]
     if (/\.(tex|bib)$/i.test(p)) {
@@ -197,7 +201,10 @@ export async function closeProject(): Promise<void> {
   await saveAll()
   await stopSession({ forget: false })
   persistTabs()
-  for (const p of [...docs.keys()]) closeDoc(p)
+  for (const p of [...docs.keys()]) {
+    closeDoc(p)
+    leanClosed(p)
+  }
   showDoc(null)
   await api.watch(null)
   store.set({ root: null, files: [], tabs: [], active: null, mainFile: null, pdf: null, diagnostics: [], result: null, dirty: {} })
@@ -228,7 +235,8 @@ export async function refreshFiles(): Promise<void> {
   let files = await api.list(root)
   // Conserver les fichiers ouverts absents du listage (dossier protégé par macOS, par ex.)
   const listed = new Set(files.map((f) => f.path))
-  const missing = store.get().tabs.filter((t) => !listed.has(t))
+  // Sauf les fichiers internes ouverts en onglet (preuves Lean dans .lumentex), qui restent hors de l'arbre
+  const missing = store.get().tabs.filter((t) => !listed.has(t) && !t.startsWith('.lumentex/'))
   if (missing.length) files = [...files, ...missing.map((path) => ({ path, isDir: false }))]
   store.set({ files })
   setFileList(files.filter((f) => !f.isDir).map((f) => f.path))
@@ -257,6 +265,7 @@ export async function openFile(path: string, opts: { background?: boolean; line?
   if (opts.background) return
   store.set({ active: path })
   showDoc(docs.has(path) ? path : null)
+  leanShown(path)
   persistTabs()
   scheduleWordCount()
   if (opts.line) {
@@ -270,10 +279,12 @@ export async function closeTab(path: string): Promise<void> {
   const idx = tabs.indexOf(path)
   const next = tabs.filter((t) => t !== path)
   closeDoc(path)
+  leanClosed(path)
   let newActive = active
   if (active === path) newActive = next[Math.min(idx, next.length - 1)] ?? null
   store.set({ tabs: next, active: newActive })
   if (active === path) showDoc(newActive && docs.has(newActive) ? newActive : null)
+  if (active === path) leanShown(newActive)
   refreshDirty(path)
   persistTabs()
 }
@@ -360,7 +371,7 @@ export async function createEntry(dir: string, name: string, isDir: boolean): Pr
     return
   }
   const rel = dir ? `${dir}/${name}` : name
-  const content = !isDir && /\.tex$/i.test(name) ? `% ${name}\n\n` : ''
+  const content = isDir ? '' : /\.tex$/i.test(name) ? `% ${name}\n\n` : /\.lean$/i.test(name) ? 'import Mathlib\n\n' : ''
   try {
     await api.create(root, rel, isDir, content)
     await refreshFiles()

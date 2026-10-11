@@ -6,6 +6,17 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.3.0',
+    date: '2026-10-12',
+    items: [
+      'Lean : vérifiez vos démonstrations. Une coche dans la marge, à côté de chaque énoncé suivi d’une preuve, la fait vérifier par Lean, avec l’IA ou en écrivant le Lean vous-même. ✓ vérifiée, ✗ refusée, ↻ modifiée depuis. La coche n’apparaît jamais dans le PDF.',
+      'Avec l’IA, Lumen TeX lui fait traduire la preuve en Lean et la corriger jusqu’à ce que Lean l’accepte, puis vous montre l’énoncé traduit à valider : c’est le seul point à vérifier vous-même.',
+      'Fichiers .lean : écrivez du Lean comme du LaTeX. Le panneau Lean remplace l’aperçu PDF et montre ce qu’il reste à démontrer à l’endroit du curseur, ainsi que les erreurs, que l’IA peut corriger.',
+      'Les symboles se tapent comme dans VS Code : \\to puis espace donne →, \\forall donne ∀, \\R donne ℝ…',
+      'Lean et Mathlib (≈ 10 Go) s’installent à la demande, en un clic, depuis le panneau Lean ou les réglages.'
+    ]
+  },
+  {
     version: '1.2.2',
     date: '2026-10-04',
     items: [

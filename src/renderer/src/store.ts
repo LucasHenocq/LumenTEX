@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, FileEntry, Settings, TectonicStatus, UserRight } from '../../shared/types'
+import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, FileEntry, LeanDiag, LeanProgress, LeanStatus, Settings, TectonicStatus, UserRight } from '../../shared/types'
 
 export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat'
 
@@ -46,6 +46,17 @@ export interface CollabState {
   rules: { host: string | null; copies: boolean; users: Record<string, UserRight>; files: Record<string, 'ro'> }
 }
 
+/** Lean : installation, et fichiers .lean ouverts (messages, vérification en cours, buts au curseur) */
+export interface LeanState {
+  status: LeanStatus
+  /** Installation en cours (étape affichée), ou terminée en erreur */
+  install: LeanProgress | null
+  diags: Record<string, LeanDiag[]>
+  busy: Record<string, boolean>
+  /** Buts au curseur du fichier actif ; null hors d'une preuve */
+  goals: string[] | null
+}
+
 export type CompileStatus = 'idle' | 'running' | 'success' | 'warning' | 'error'
 
 export interface AppState {
@@ -78,6 +89,7 @@ export interface AppState {
   collab: CollabState
   /** macOS : téléchargement de la mise à jour en cours (pourcentage) */
   updateProgress: number | null
+  lean: LeanState
 }
 
 type Listener = () => void
@@ -137,6 +149,7 @@ export const store = createStore<AppState>({
   pdfScale: 1,
   resolvedDark: false,
   updateProgress: null,
+  lean: { status: { ready: false }, install: null, diags: {}, busy: {}, goals: null },
   collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [], rules: NO_RULES }
 })
 

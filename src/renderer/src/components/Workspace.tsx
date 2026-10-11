@@ -3,6 +3,7 @@ import PdfViewer from '../pdf/PdfViewer'
 import { updateSettings, useApp } from "../store"
 import ActivityBar from './ActivityBar'
 import EditorPane from './EditorPane'
+import LeanPanel from './LeanPanel'
 import LogPanel from './LogPanel'
 import PdfToolbar from './PdfToolbar'
 import Sidebar from './Sidebar'
@@ -38,6 +39,8 @@ function Splitter({ onDrag, onEnd }: { onDrag: (dx: number) => void; onEnd: () =
 export default function Workspace(): React.JSX.Element {
   const settings = useApp((s) => s.settings)
   const logOpen = useApp((s) => s.logOpen)
+  // Fichier .lean actif : le panneau Lean prend la place de l'aperçu PDF (gardé monté, pour retrouver sa position)
+  const lean = useApp((s) => (s.active && /\.lean$/i.test(s.active) ? s.active : null))
   const mainRef = useRef<HTMLDivElement>(null)
   const [sidebarWidth, setSidebarWidth] = useState(settings.sidebarWidth)
   const [pdfRatio, setPdfRatio] = useState(settings.pdfRatio)
@@ -80,8 +83,11 @@ export default function Workspace(): React.JSX.Element {
               onEnd={() => void updateSettings({ pdfRatio: widthRef.current.pdfRatio })}
             />
             <div className="pdf-pane" style={{ width: `calc((100% - 48px - ${settings.sidebarVisible ? sidebarWidth : 0}px) * ${pdfRatio})` }}>
-              <PdfToolbar />
-              <PdfViewer />
+              {lean && <LeanPanel path={lean} />}
+              <div className="pdf-keep" style={{ display: lean ? 'none' : 'contents' }}>
+                <PdfToolbar />
+                <PdfViewer />
+              </div>
             </div>
           </>
         )}

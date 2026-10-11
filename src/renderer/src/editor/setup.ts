@@ -30,6 +30,8 @@ import { bibHighlight, bibLanguage, latexHighlight, latexLanguage } from '../lat
 import { store } from '../store'
 import { latexCompletionSources } from './complete'
 import { fileFacet, frenchPhrases, latexFolding, latexLinter, mathHover, wrapSelection } from './features'
+import { leanLanguage } from './lean'
+import { proofGutter } from './proofs'
 
 /** Crochets vers la logique applicative (renseignés par actions.ts, évite les imports circulaires) */
 export const hooks = {
@@ -62,6 +64,11 @@ const wrapC = new Compartment()
 const attrsC = new Compartment()
 const mathC = new Compartment()
 const collabC = new Compartment()
+const proofC = new Compartment()
+
+const isTexPath = (p: string): boolean => /\.(tex|ltx)$/i.test(p)
+/** Coches Lean des preuves : documents LaTeX, une fois Lean installé */
+const proofExt = (p: string): Extension => (isTexPath(p) && store.get().lean.status.ready ? proofGutter : [])
 
 function settingsExtensions(s: Settings): { vim: Extension; wrap: Extension; attrs: Extension; math: Extension } {
   return {
@@ -81,7 +88,13 @@ export function reconfigureAll(): void {
   const e = settingsExtensions(store.get().settings)
   const tex = !!activePath && /\.(tex|sty|cls|ltx)$/i.test(activePath)
   view.dispatch({
-    effects: [vimC.reconfigure(e.vim), wrapC.reconfigure(e.wrap), attrsC.reconfigure(e.attrs), mathC.reconfigure(tex ? e.math : [])]
+    effects: [
+      vimC.reconfigure(e.vim),
+      wrapC.reconfigure(e.wrap),
+      attrsC.reconfigure(e.attrs),
+      mathC.reconfigure(tex ? e.math : []),
+      proofC.reconfigure(activePath ? proofExt(activePath) : [])
+    ]
   })
 }
 
@@ -144,6 +157,7 @@ function languageFor(path: string): Extension {
     return [latexLanguage, syntaxHighlighting(latexHighlight), latexFolding, latexLinter]
   }
   if (/\.bib$/i.test(path)) return [bibLanguage, syntaxHighlighting(bibHighlight)]
+  if (/\.lean$/i.test(path)) return [leanLanguage, lintGutter()]
   return []
 }
 
@@ -157,6 +171,7 @@ export function createState(path: string, text: string): EditorState {
       fileFacet.of(path),
       EditorState.phrases.of(frenchPhrases),
       lineNumbers(),
+      proofC.of(proofExt(path)),
       highlightActiveLineGutter(),
       highlightSpecialChars(),
       history(),

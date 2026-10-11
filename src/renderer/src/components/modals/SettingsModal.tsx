@@ -5,10 +5,11 @@ import { emit } from '../../lib/bus'
 import { store, toast, updateSettings, useApp } from '../../store'
 import { ENGINES } from '../Copilot'
 import TectonicSetup from '../TectonicSetup'
+import LeanSetup from '../LeanSetup'
 import { closeModal, ModalFrame } from '../Modals'
 import { kb } from '../../lib/keys'
 
-type Section = 'appearance' | 'editor' | 'compile' | 'pdf' | 'ai'
+type Section = 'appearance' | 'editor' | 'compile' | 'pdf' | 'lean' | 'ai'
 
 function statusText(engine: AiEngine, s: AiStatus | undefined): string {
   if (!s) return 'Vérification…'
@@ -114,6 +115,7 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 export default function SettingsModal(): React.JSX.Element {
   const s = useApp((st) => st.settings)
   const tectonic = useApp((st) => st.tectonic)
+  const lean = useApp((st) => st.lean.status)
   const [section, setSection] = useState<Section>('appearance')
   const set = (patch: Partial<Settings>): void => void updateSettings(patch)
 
@@ -133,6 +135,7 @@ export default function SettingsModal(): React.JSX.Element {
               ['editor', 'Éditeur'],
               ['compile', 'Compilation'],
               ['pdf', 'Aperçu PDF'],
+              ['lean', 'Lean'],
               ['ai', 'IA']
             ] as [Section, string][]
           ).map(([id, label]) => (
@@ -261,6 +264,24 @@ export default function SettingsModal(): React.JSX.Element {
                   </button>
                 </div>
               </Row>
+            </>
+          )}
+          {section === 'lean' && (
+            <>
+              <div className="settings-subtitle">Vérification des preuves</div>
+              {lean.ready ? (
+                <div className="engine-info">
+                  <span className="dot ok" /> {lean.version}
+                </div>
+              ) : (
+                <LeanSetup />
+              )}
+              <div className="settings-note">
+                Dans un document LaTeX, une coche apparaît dans la marge à côté de chaque énoncé suivi d’une preuve
+                (<code>{'\\begin{proof}'}</code>). Cliquez dessus pour faire vérifier la preuve par Lean, avec l’IA ou en écrivant le Lean
+                vous-même. La coche n’apparaît jamais dans le PDF. Les fichiers <code>.lean</code> s’ouvrent avec le panneau Lean à la place de
+                l’aperçu : buts à démontrer au curseur, erreurs, et correction par l’IA.
+              </div>
             </>
           )}
           {section === 'ai' && (

@@ -10,6 +10,9 @@ import type {
   ContextMenuItem,
   FileEntry,
   InstallProgress,
+  LeanDiag,
+  LeanProgress,
+  LeanStatus,
   SearchMatch,
   Settings,
   SyncForwardResult,
@@ -37,8 +40,8 @@ const api = {
   openFileDialog: (opts?: { title?: string; extensions?: string[]; defaultPath?: string }): Promise<string | null> =>
     invoke('dialog:openFile', opts),
   chooseDir: (defaultPath?: string): Promise<string | null> => invoke('dialog:chooseDir', defaultPath),
-  confirm: (message: string, detail?: string, okLabel?: string): Promise<boolean> =>
-    invoke('dialog:confirm', message, detail, okLabel),
+  confirm: (message: string, detail?: string, okLabel?: string, cancelLabel?: string): Promise<boolean> =>
+    invoke('dialog:confirm', message, detail, okLabel, cancelLabel),
 
   paths: (): Promise<{ documents: string; home: string }> => invoke('app:paths'),
   setDirty: (dirty: boolean): void => ipcRenderer.send('app:dirty', dirty),
@@ -137,6 +140,16 @@ const api = {
 
   tectonicStatus: (force?: boolean): Promise<TectonicStatus> => invoke('tectonic:status', force),
   installTectonic: (): Promise<TectonicStatus> => invoke('tectonic:install'),
+
+  leanStatus: (): Promise<LeanStatus> => invoke('lean:status'),
+  installLean: (): Promise<LeanStatus> => invoke('lean:install'),
+  onLeanProgress: (cb: (p: LeanProgress) => void) => on<[LeanProgress]>('lean:progress', cb),
+  leanCheck: (file: string): Promise<{ ok: boolean; messages: LeanDiag[] }> => invoke('lean:check', file),
+  leanSync: (file: string, text: string): Promise<void> => invoke('lean:sync', file, text),
+  leanClose: (file: string): Promise<void> => invoke('lean:close', file),
+  leanGoal: (file: string, line: number, character: number): Promise<string[] | null> => invoke('lean:goal', file, line, character),
+  onLeanDiagnostics: (cb: (file: string, d: LeanDiag[]) => void) => on<[string, LeanDiag[]]>('lean:diagnostics', cb),
+  onLeanBusy: (cb: (file: string, busy: boolean) => void) => on<[string, boolean]>('lean:busy', cb),
 
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
 

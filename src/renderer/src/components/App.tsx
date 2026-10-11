@@ -7,6 +7,9 @@ import Toasts from './Toasts'
 import Welcome from './Welcome'
 import Workspace from './Workspace'
 import { checkWhatsNew } from '../lib/changelog'
+import { initLean } from '../lib/lean'
+// Coches des preuves (crochets de l'éditeur)
+import '../lib/proofs'
 
 const api = window.api
 
@@ -28,6 +31,7 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     const offs = [
+      initLean(),
       api.onMenu((id) => runCommand(id)),
       api.onOpenPath((p) => void openPath(p)),
       // macOS : l'app télécharge le .dmg et l'ouvre (fenêtre « glisser dans Applications »)
@@ -68,8 +72,8 @@ export default function App(): React.JSX.Element {
     media.addEventListener('change', onMedia)
 
     void (async () => {
-      const [settings, tectonic] = await Promise.all([api.getSettings(), api.tectonicStatus()])
-      store.set({ settings, tectonic })
+      const [settings, tectonic, leanStatus] = await Promise.all([api.getSettings(), api.tectonicStatus(), api.leanStatus()])
+      store.set((s) => ({ settings, tectonic, lean: { ...s.lean, status: leanStatus } }))
       applyTheme()
       store.set({ ready: true })
       checkWhatsNew()

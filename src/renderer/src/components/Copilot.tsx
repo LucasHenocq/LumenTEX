@@ -9,6 +9,7 @@ import { highlightTex } from '../lib/texHighlight'
 import { contents } from '../lib/projectIndex'
 import { store, updateSettings, useApp } from '../store'
 import { withDisplayMath, withInlineMath } from '../lib/mathText'
+import { isLean, leanProblems } from '../lib/lean'
 
 type Msg = { role: 'user' | 'assistant'; content: string }
 
@@ -40,6 +41,16 @@ async function attachedBlocks(files: Attached[]): Promise<string> {
   return blocks.join('\n')
 }
 
+/** Erreurs à signaler à l'IA : messages de Lean pour un fichier .lean, sinon ceux de la dernière compilation */
+function problems(path: string | null): string[] {
+  if (isLean(path)) return leanProblems(path)
+  return store
+    .get()
+    .diagnostics.filter((d) => d.severity !== 'info')
+    .slice(0, 15)
+    .map((d) => `- ${d.severity === 'error' ? 'Erreur' : 'Avertissement'} ${d.file ?? ''}${d.line ? ':' + d.line : ''} : ${d.message}`)
+}
+
 // ponytail: fichier ouvert tronqué à 40 000 caractères, n'envoyer que les sections utiles si les gros documents posent problème
 const MAX_FILE = 40000
 
@@ -49,17 +60,15 @@ async function ollamaContext(files: Attached[]): Promise<string> {
   const text = path ? (textOf(path) ?? '') : ''
   const view = getView()
   const sel = view ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to) : ''
-  const errors = store
-    .get()
-    .diagnostics.filter((d) => d.severity !== 'info')
-    .slice(0, 15)
-    .map((d) => `- ${d.severity === 'error' ? 'Erreur' : 'Avertissement'} ${d.file ?? ''}${d.line ? ':' + d.line : ''} : ${d.message}`)
+  const errors = problems(path)
+  const lang = isLean(path) ? 'lean' : 'latex'
   return [
     'Tu es un assistant LaTeX intégré à un éditeur (compilation Tectonic / XeLaTeX : pas de fontenc/inputenc, pas de biber).',
-    'Réponds en français, de façon concise. Mets tout code LaTeX à insérer dans un bloc ```latex.',
-    path ? `\nFichier ouvert : ${path}\n\`\`\`latex\n${text.slice(0, MAX_FILE)}\n\`\`\`` : '\nAucun fichier ouvert.',
-    sel ? `\nSélection de l’utilisateur :\n\`\`\`latex\n${sel}\n\`\`\`` : '',
-    errors.length ? `\nProblèmes de la dernière compilation :\n${errors.join('\n')}` : '',
+    'Les fichiers .lean sont en Lean 4, avec Mathlib.',
+    'Réponds en français, de façon concise. Mets tout code à insérer dans un bloc ```latex (ou ```lean pour du Lean).',
+    path ? `\nFichier ouvert : ${path}\n\`\`\`${lang}\n${text.slice(0, MAX_FILE)}\n\`\`\`` : '\nAucun fichier ouvert.',
+    sel ? `\nSélection de l’utilisateur :\n\`\`\`${lang}\n${sel}\n\`\`\`` : '',
+    errors.length ? `\n${isLean(path) ? 'Messages de Lean' : 'Problèmes de la dernière compilation'} :\n${errors.join('\n')}` : '',
     await attachedBlocks(files)
   ].join('\n')
 }
@@ -71,15 +80,11 @@ async function agentPrompt(question: string, files: Attached[]): Promise<string>
   const view = getView()
   const sel = view ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to) : ''
   const line = view ? view.state.doc.lineAt(view.state.selection.main.head).number : 0
-  const errors = store
-    .get()
-    .diagnostics.filter((d) => d.severity !== 'info')
-    .slice(0, 15)
-    .map((d) => `- ${d.severity === 'error' ? 'Erreur' : 'Avertissement'} ${d.file ?? ''}${d.line ? ':' + d.line : ''} : ${d.message}`)
+  const errors = problems(path)
   return [
     path ? `[Fichier ouvert : ${path}, curseur ligne ${line}]` : '',
     sel ? `[Sélection :\n${sel}\n]` : '',
-    errors.length ? `[Problèmes de la dernière compilation :\n${errors.join('\n')}\n]` : '',
+    errors.length ? `[${isLean(path) ? 'Messages de Lean' : 'Problèmes de la dernière compilation'} :\n${errors.join('\n')}\n]` : '',
     inProject.length ? `[Fichiers joints par l’utilisateur, à lire : ${inProject.join(', ')}]` : '',
     await attachedBlocks(files.filter((a) => a.external)),
     question
@@ -188,18 +193,20 @@ function Message({ m }: { m: Msg }): React.JSX.Element {
   // Alternance texte / bloc de code : les indices impairs sont du code
   return (
     <div className="copilot-msg">
-      {m.content.split(/```[a-zA-Z]*\n?/).map((p, i) => {
-        if (!(i % 2)) return textBlocks(p, i)
+      {m.content.split(/```([a-zA-Z0-9]*)\n?/).map((p, i, parts) => {
+        // Découpage : texte, langage, code, texte… (le langage précède son bloc)
+        if (i % 3 === 0) return textBlocks(p, i)
+        if (i % 3 === 1) return null
         const code = p.replace(/\n$/, '')
         return (
           <div key={i} className="copilot-code">
             <div className="copilot-code-bar">
-              <span>latex</span>
+              <span>{parts[i - 1] || 'latex'}</span>
               <button title="Insérer au curseur (remplace la sélection)" onClick={() => insertText(code)}>
                 <CornerDownLeft size={11} /> Insérer
               </button>
             </div>
-            <pre>{highlightTex(code)}</pre>
+            <pre>{/^lean/.test(parts[i - 1]) ? code : highlightTex(code)}</pre>
           </div>
         )
       })}
@@ -502,11 +509,14 @@ export default function Copilot(): React.JSX.Element {
     if (!taken.has(a.path)) setAttached((as) => [...as, a])
   }
 
+  /** Réponse en cours, renvoyée par ask() */
+  const answer = useRef('')
   useEffect(
     () =>
-      window.api.onAiChunk((t) =>
+      window.api.onAiChunk((t) => {
+        answer.current += t
         setMsgs((ms) => [...ms.slice(0, -1), { role: 'assistant', content: ms[ms.length - 1].content + t }])
-      ),
+      }),
     []
   )
   useEffect(() => window.api.onAiUsage(setUsage), [])
@@ -525,10 +535,15 @@ export default function Copilot(): React.JSX.Element {
     bottom.current?.scrollIntoView({ block: 'end' })
   }, [msgs])
 
-  const ask = async (q: string): Promise<void> => {
-    if (!q || busy || !root || !ready) return
+  /** Réponse complète, ou null si l'assistant n'a pas pu répondre */
+  // Occupé : lu dans une référence, une question peut suivre la précédente avant le rendu suivant
+  const running = useRef(false)
+  const ask = async (q: string): Promise<string | null> => {
+    if (!q || running.current || !root || !ready) return null
+    running.current = true
     setMsgs((ms) => [...ms, { role: 'user', content: q }, { role: 'assistant', content: '' }])
     setBusy(true)
+    answer.current = ''
     try {
       if (engine === 'ollama') {
         // Pas d'agent : tout le contexte part dans le prompt, avec l'historique de la conversation
@@ -543,11 +558,14 @@ export default function Copilot(): React.JSX.Element {
     } catch (e) {
       setMsgs((ms) => [...ms.slice(0, -1), { role: 'assistant', content: '⚠ ' + cleanError(e) }])
       void refresh() // une erreur de connexion fait réapparaître l'écran de connexion
+      return null
     } finally {
+      running.current = false
       setBusy(false)
     }
+    return answer.current
   }
-  const send = (): Promise<void> => {
+  const send = (): Promise<string | null> => {
     const q = input.trim()
     if (q && !busy && root && ready) setInput('')
     return ask(q)
@@ -563,6 +581,14 @@ export default function Copilot(): React.JSX.Element {
     []
   )
   useEffect(() => on('copilot:show', () => setHeight((h) => h || 280)), [])
+  useEffect(
+    () =>
+      on('copilot:run', ({ q, done }) => {
+        setHeight((h) => h || 280)
+        void askRef.current(q).then(done)
+      }),
+    []
+  )
 
   const resetChat = (): void => {
     setMsgs([])

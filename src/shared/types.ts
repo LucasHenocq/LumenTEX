@@ -179,6 +179,32 @@ export interface TectonicStatus {
   source?: 'custom' | 'bundled' | 'homebrew' | 'path'
 }
 
+/** Lean 4 + Mathlib (installés à la demande) */
+export interface LeanStatus {
+  ready: boolean
+  /** « Lean 4.x · Mathlib 4.x » */
+  version?: string
+}
+
+export interface LeanProgress {
+  step: number
+  of: number
+  text: string
+  detail?: string
+  done?: boolean
+  error?: boolean
+}
+
+/** Message de Lean sur un fichier (lignes à partir de 1, colonnes à partir de 0) */
+export interface LeanDiag {
+  severity: 'error' | 'warning' | 'info'
+  line: number
+  col: number
+  endLine?: number
+  endCol?: number
+  message: string
+}
+
 export interface InstallProgress {
   phase: 'download' | 'extract' | 'done' | 'error'
   received?: number

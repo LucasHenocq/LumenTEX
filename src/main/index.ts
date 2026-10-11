@@ -18,6 +18,7 @@ import { BUILD_DIR, buildPaths, cancelCompile, compile } from './compiler'
 import { addRecent, flushSettings, getSettings, setSettings } from './store'
 import { forwardSearch, reverseSearch } from './synctex'
 import { findTectonic, installTectonic } from './tectonic'
+import { checkLean, installLean, leanClose, leanGoal, leanStatus, leanSync, onLeanEvents, stopLeanServer } from './lean'
 import { askClaude, claudeStatus, claudeUsage, installClaude, loginClaude, resetClaude, stopClaude } from './claude'
 import { askCopilot, copilotModels, copilotStatus, installCopilot, loginCopilot, resetCopilot, stopCopilot } from './ghcopilot'
 import { askGemini, geminiStatus, installGemini, resetGemini, setGeminiKey, stopGemini } from './gemini'
@@ -417,12 +418,12 @@ function registerIpc(): void {
     })
     return r.canceled ? null : r.filePaths[0]
   })
-  ipcMain.handle('dialog:confirm', async (_e, message: string, detail?: string, okLabel = 'Confirmer') => {
+  ipcMain.handle('dialog:confirm', async (_e, message: string, detail?: string, okLabel = 'Confirmer', cancelLabel = 'Annuler') => {
     const r = await dialog.showMessageBox(win!, {
       type: 'question',
       message,
       detail,
-      buttons: [okLabel, 'Annuler'],
+      buttons: [okLabel, cancelLabel],
       defaultId: 0,
       cancelId: 1
     })
@@ -623,7 +624,9 @@ function registerIpc(): void {
   ipcMain.handle('compile:cancel', () => cancelCompile())
   ipcMain.handle('compile:paths', (_e, root: string, mainRel: string) => buildPaths(root, mainRel))
   ipcMain.handle('compile:clean', (_e, root: string) => {
-    fs.rmSync(path.join(root, BUILD_DIR), { recursive: true, force: true })
+    // Sauf les preuves Lean du projet (.lumentex/lean)
+    const dir = path.join(root, BUILD_DIR)
+    for (const e of fs.existsSync(dir) ? fs.readdirSync(dir) : []) if (e !== 'lean') fs.rmSync(path.join(dir, e), { recursive: true, force: true })
     return true
   })
   ipcMain.handle('ai:stop', () => {
@@ -758,6 +761,18 @@ function registerIpc(): void {
   // --- Tectonic ---
   ipcMain.handle('tectonic:status', (_e, force?: boolean) => findTectonic(!!force))
   ipcMain.handle('tectonic:install', () => installTectonic((p) => send('tectonic:progress', p)))
+
+  // --- Lean ---
+  ipcMain.handle('lean:status', () => leanStatus())
+  ipcMain.handle('lean:install', () => installLean((p) => send('lean:progress', p)))
+  ipcMain.handle('lean:check', (_e, file: string) => checkLean(file))
+  ipcMain.handle('lean:sync', (_e, file: string, text: string) => leanSync(file, text))
+  ipcMain.handle('lean:close', (_e, file: string) => leanClose(file))
+  ipcMain.handle('lean:goal', (_e, file: string, line: number, character: number) => leanGoal(file, line, character))
+  onLeanEvents({
+    diagnostics: (file, d) => send('lean:diagnostics', file, d),
+    busy: (file, busy) => send('lean:busy', file, busy)
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -856,7 +871,10 @@ function forgetGuestSettings(): void {
 }
 
 // Copies de travail des invités : effacées en quittant, et au lancement (plantage, coupure de courant)
-app.on('will-quit', () => dropGuestDirs())
+app.on('will-quit', () => {
+  dropGuestDirs()
+  stopLeanServer()
+})
 void app.whenReady().then(() => {
   dropGuestDirs()
   forgetGuestSettings()
