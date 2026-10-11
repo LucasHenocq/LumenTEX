@@ -6,6 +6,13 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.3.1',
+    date: '2026-10-12',
+    items: [
+      'Lean : une preuve séparée de son théorème par un titre ou du texte (« \\section{Démonstration} »…) a maintenant sa coche, sur la ligne du théorème.'
+    ]
+  },
+  {
     version: '1.3.0',
     date: '2026-10-12',
     items: [

@@ -29,39 +29,55 @@ export function hash(s: string): string {
   return (h >>> 0).toString(16).padStart(8, '0')
 }
 
-/** Énoncés suivis d'une preuve : \begin{X}…\end{X}, puis (espaces et commentaires seulement) \begin{proof}…\end{proof} */
+/** Énoncés (théorème, proposition…) : une preuve peut en être séparée par un titre ou du texte */
+const THEOREM_LIKE = /^(th(m|eo|eor|eorem|eoreme|éorème)?|prop(osition|riete|riété)?|lem(ma|me)?|cor(ollary|ollaire|o)?|claim|fact|exo|exercise|exercice|question|application)\*?$/i
+
+/**
+ * Énoncés suivis d'une preuve (\begin{proof}…\end{proof}). L'énoncé est l'environnement juste avant la preuve,
+ * ou sinon le dernier théorème (proposition, lemme…) au-dessus, s'il n'a pas déjà sa preuve
+ */
 export function findProofs(text: string): Proof[] {
   const out: Proof[] = []
   const begin = /\\begin\{([^}]+)\}/g
+  /** Dernier théorème rencontré sans preuve */
+  let last: { name: string; start: number; endAt: number } | null = null
   for (let m; (m = begin.exec(text)); ) {
-    if (!PROOF_ENV.test(m[1])) continue
     const env = m[1]
+    if (THEOREM_LIKE.test(env)) {
+      const endAt = text.indexOf(`\\end{${env}}`, begin.lastIndex)
+      if (endAt >= 0) last = { name: env, start: m.index, endAt }
+      continue
+    }
+    if (!PROOF_ENV.test(env)) continue
     const endIdx = text.indexOf(`\\end{${env}}`, begin.lastIndex)
     if (endIdx < 0) continue
-    // Énoncé juste avant (seulement des espaces entre les deux)
+    begin.lastIndex = endIdx
+    // Environnement juste avant (seulement des espaces entre les deux), sinon le dernier théorème
     let i = m.index
     while (i > 0 && /\s/.test(text[i - 1])) i--
-    if (text[i - 1] !== '}') continue
-    const endAt = text.lastIndexOf('\\end{', i)
-    const name = text.slice(endAt + 5, i - 1)
-    if (endAt < 0 || name.includes('}') || NOT_STATEMENT.test(name)) continue
-    const start = text.lastIndexOf(`\\begin{${name}}`, endAt)
-    if (start < 0) continue
-    let statement = text.slice(start + `\\begin{${name}}`.length, endAt)
+    let found = last
+    if (text[i - 1] === '}') {
+      const endAt = text.lastIndexOf('\\end{', i)
+      const name = text.slice(endAt + 5, i - 1)
+      const start = text.lastIndexOf(`\\begin{${name}}`, endAt)
+      if (endAt >= 0 && start >= 0 && !name.includes('}') && !NOT_STATEMENT.test(name)) found = { name, start, endAt }
+    }
+    last = null
+    if (!found) continue
+    let statement = text.slice(found.start + `\\begin{${found.name}}`.length, found.endAt)
     const title = /^\s*\[([^\]]*)\]/.exec(statement)
     if (title) statement = statement.slice(title[0].length)
-    const proof = text.slice(begin.lastIndex, endIdx).replace(/^\s*\[[^\]]*\]/, '')
-    const label = /\\label\{([^}]+)\}/.exec(statement)?.[1]
+    const proof = text.slice(m.index + m[0].length, endIdx).replace(/^\s*\[[^\]]*\]/, '')
+    const label = /\label\{([^}]+)\}/.exec(statement)?.[1]
     out.push({
       key: label ?? `h${hash(statement)}`,
-      env: name,
+      env: found.name,
       title: title?.[1] ?? '',
-      statement: statement.replace(/\\label\{[^}]*\}/g, '').trim(),
+      statement: statement.replace(/\label\{[^}]*\}/g, '').trim(),
       proof: proof.trim(),
       hash: hash(statement + '\0' + proof),
-      from: start
+      from: found.start
     })
-    begin.lastIndex = endIdx
   }
   return out
 }
