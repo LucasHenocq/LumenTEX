@@ -6,6 +6,15 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.3.2',
+    date: '2026-10-12',
+    items: [
+      'Lean vérifie maintenant votre preuve, et plus seulement l’énoncé : chaque étape de la preuve LaTeX devient une étape Lean. Si une étape est fausse ou ne découle pas des précédentes, Lumen TeX vous montre laquelle, avec la raison (souvent un contre-exemple).',
+      '« Vérifier seulement l’énoncé » reste possible : la coche est alors plus claire, pour la distinguer d’une preuve vérifiée étape par étape.',
+      'La validation se fait dans une fenêtre de Lumen TeX : votre énoncé et vos étapes s’affichent en formules, à côté de leur version Lean.'
+    ]
+  },
+  {
     version: '1.3.1',
     date: '2026-10-12',
     items: [

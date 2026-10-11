@@ -82,8 +82,8 @@ export function findProofs(text: string): Proof[] {
   return out
 }
 
-/** État d'une coche : vérifiée, refusée, à revérifier, en cours, jamais vérifiée */
-export type ProofMark = 'ok' | 'fail' | 'stale' | 'running' | 'none'
+/** État d'une coche : preuve vérifiée, énoncé seulement vérifié, refusée, à revérifier, en cours, jamais vérifiée */
+export type ProofMark = 'ok' | 'statement' | 'fail' | 'stale' | 'running' | 'none'
 
 /** Renseignés par lib/proofs.ts */
 export const proofHooks = {
@@ -100,13 +100,14 @@ const proofsField = StateField.define<Proof[]>({
 })
 
 const TITLES: Record<ProofMark, string> = {
-  ok: 'Preuve vérifiée par Lean',
+  ok: 'Preuve vérifiée par Lean, étape par étape',
+  statement: 'Énoncé vérifié par Lean (la preuve LaTeX n’a pas été suivie étape par étape)',
   fail: 'Lean n’a pas validé cette preuve · cliquer pour les options',
   stale: 'Modifiée depuis la vérification : à revérifier',
   running: 'Vérification en cours…',
   none: 'Vérifier cette preuve avec Lean'
 }
-const ICONS: Record<ProofMark, string> = { ok: '✓', fail: '✗', stale: '↻', running: '…', none: '○' }
+const ICONS: Record<ProofMark, string> = { ok: '✓', statement: '✓', fail: '✗', stale: '↻', running: '…', none: '○' }
 
 class Mark extends GutterMarker {
   constructor(readonly state: ProofMark) {

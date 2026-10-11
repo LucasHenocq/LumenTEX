@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import type { LeanStep } from './lib/leanSteps'
 import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, FileEntry, LeanDiag, LeanProgress, LeanStatus, Settings, TectonicStatus, UserRight } from '../../shared/types'
 
 export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat'
@@ -15,6 +16,19 @@ export type Modal =
   | { type: 'collab'; join?: boolean }
   /** since : nouveautés installées depuis cette version ; absent : historique complet */
   | { type: 'whats-new'; since?: string }
+  /** Énoncé traduit en Lean par l'IA, à valider par l'utilisateur */
+  | {
+      type: 'lean-confirm'
+      env: string
+      title: string
+      statement: string
+      lean: string
+      explanation: string
+      /** Vérification étape par étape : étapes de la preuve ; refused : une étape est fausse ou non justifiée */
+      steps?: LeanStep[]
+      refused?: boolean
+      resolve: (ok: boolean) => void
+    }
   | null
 
 export interface Toast {
