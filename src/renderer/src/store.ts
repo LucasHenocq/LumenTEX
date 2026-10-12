@@ -16,20 +16,34 @@ export type Modal =
   | { type: 'collab'; join?: boolean }
   /** since : nouveautés installées depuis cette version ; absent : historique complet */
   | { type: 'whats-new'; since?: string }
-  /** Énoncé traduit en Lean par l'IA, à valider par l'utilisateur */
-  | {
-      type: 'lean-confirm'
-      env: string
-      title: string
-      statement: string
-      lean: string
-      explanation: string
-      /** Vérification étape par étape : étapes de la preuve ; refused : une étape est fausse ou non justifiée */
-      steps?: LeanStep[]
-      refused?: boolean
-      resolve: (ok: boolean) => void
-    }
   | null
+
+/** Fin d'une vérification par l'IA : énoncé et étapes à valider (acceptée par Lean), ou étapes en cause (refused) */
+export interface LeanVerdict {
+  env: string
+  title: string
+  statement: string
+  lean: string
+  explanation: string
+  steps?: LeanStep[]
+  refused?: boolean
+  resolve: (ok: boolean) => void
+}
+
+/** Vérification d'une preuve par l'IA, suivie dans la fenêtre flottante (qui peut être fermée puis rouverte) */
+export interface ProofRun {
+  /** Énoncé vérifié, pour le titre de la fenêtre */
+  title: string
+  open: boolean
+  /** Ce qui se passe : « L'IA écrit le Lean… », « Lean vérifie… » */
+  phase: string
+  /** Un tour : réponse de l'IA (au fil de l'eau), puis ce qu'en dit Lean */
+  rounds: { ai: string; lean: string | null; ok: boolean | null }[]
+  verdict: LeanVerdict | null
+  /** L'IA n'a pas abouti : message, et fichier Lean à ouvrir */
+  failure: { text: string; lean: string | null } | null
+  done: boolean
+}
 
 export interface Toast {
   id: number
@@ -104,6 +118,7 @@ export interface AppState {
   /** macOS : téléchargement de la mise à jour en cours (pourcentage) */
   updateProgress: number | null
   lean: LeanState
+  proofRun: ProofRun | null
 }
 
 type Listener = () => void
@@ -164,6 +179,7 @@ export const store = createStore<AppState>({
   resolvedDark: false,
   updateProgress: null,
   lean: { status: { ready: false }, install: null, diags: {}, busy: {}, goals: null },
+  proofRun: null,
   collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [], rules: NO_RULES }
 })
 

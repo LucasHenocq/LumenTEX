@@ -3,6 +3,7 @@ import { applySettingsToEditor, handleFsChanged, openPath, openProject, saveAll 
 import { runCommand } from '../lib/commands'
 import { store, toast, useApp } from '../store'
 import Modals from './Modals'
+import ProofRunPanel from './ProofRunPanel'
 import Toasts from './Toasts'
 import Welcome from './Welcome'
 import Workspace from './Workspace'
@@ -103,6 +104,7 @@ export default function App(): React.JSX.Element {
     <>
       {root ? <Workspace /> : <Welcome />}
       <Modals />
+      <ProofRunPanel />
       <Toasts />
     </>
   )

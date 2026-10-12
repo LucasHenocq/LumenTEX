@@ -1,5 +1,25 @@
 import { BookMarked, File, FileCode2, FileImage, FileText, Folder, FolderOpen, Settings } from 'lucide-react'
 
+/** Fichier Lean : un « ∀ » dans un carré arrondi, au trait des icônes lucide */
+function LeanIcon({ size }: { size: number }): React.JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="fi fi-lean"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <path d="M8 7.5l4 9 4-9M9.6 11h4.8" />
+    </svg>
+  )
+}
+
 export default function FileIcon({ name, isDir, open, size = 15 }: { name: string; isDir?: boolean; open?: boolean; size?: number }): React.JSX.Element {
   if (isDir) {
     const I = open ? FolderOpen : Folder
@@ -8,6 +28,7 @@ export default function FileIcon({ name, isDir, open, size = 15 }: { name: strin
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   if (ext === 'tex') return <FileText size={size} className="fi fi-tex" strokeWidth={1.8} />
   if (ext === 'bib') return <BookMarked size={size} className="fi fi-bib" strokeWidth={1.8} />
+  if (ext === 'lean') return <LeanIcon size={size} />
   if (['sty', 'cls', 'bst', 'def', 'cfg'].includes(ext)) return <Settings size={size} className="fi fi-sty" strokeWidth={1.8} />
   if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'eps', 'bmp', 'webp', 'tif', 'tiff'].includes(ext)) return <FileImage size={size} className="fi fi-img" strokeWidth={1.8} />
   if (ext === 'pdf') return <FileImage size={size} className="fi fi-pdf" strokeWidth={1.8} />

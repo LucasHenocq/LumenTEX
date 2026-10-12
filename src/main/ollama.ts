@@ -1,4 +1,5 @@
 import { net } from 'electron'
+import type { Lane } from './claude'
 import { spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
@@ -14,7 +15,7 @@ const OLLAMA = 'http://127.0.0.1:11434'
 export const DEFAULT_OLLAMA_MODEL = 'gemma3:4b'
 const NUM_CTX = 16384
 
-let chatAbort: AbortController | null = null
+const aborts = new Map<Lane, AbortController>()
 
 function ollamaExe(): string | null {
   const exe = process.platform === 'win32' ? 'ollama.exe' : 'ollama'
@@ -105,9 +106,10 @@ async function docsFor(query: string): Promise<string> {
 type OllamaMessage = { role: string; content: string; images?: string[] }
 
 /** Discussion streamée ; abort permet l'arrêt par l'utilisateur */
-async function chat(messages: OllamaMessage[], onText: (t: string) => void): Promise<void> {
-  chatAbort?.abort()
-  const abort = (chatAbort = new AbortController())
+async function chat(messages: OllamaMessage[], onText: (t: string) => void, lane: Lane = 'chat'): Promise<void> {
+  aborts.get(lane)?.abort()
+  const abort = new AbortController()
+  aborts.set(lane, abort)
   let res: Response
   try {
     res = await net.fetch(`${OLLAMA}/api/chat`, {
@@ -139,15 +141,15 @@ async function chat(messages: OllamaMessage[], onText: (t: string) => void): Pro
   } catch (e) {
     if (!abort.signal.aborted) throw e
   } finally {
-    if (chatAbort === abort) chatAbort = null
+    if (aborts.get(lane) === abort) aborts.delete(lane)
   }
 }
 
 /** Copilot : le premier message (system) reçoit en plus les extraits de documentation liés à la dernière question */
-export async function askOllama(messages: OllamaMessage[], onText: (t: string) => void): Promise<void> {
+export async function askOllama(messages: OllamaMessage[], onText: (t: string) => void, lane: Lane = 'chat'): Promise<void> {
   const question = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
   const withDocs = [{ ...messages[0], content: messages[0].content + (await docsFor(question)) }, ...messages.slice(1)]
-  return chat(withDocs, onText)
+  return chat(withDocs, onText, lane)
 }
 
 /** Image → LaTeX : nécessite un modèle multimodal (gemma3 4b et plus, llava, qwen2.5vl…) */
@@ -160,7 +162,8 @@ export async function convertOllama(prompt: string, images: string[], onText: (t
   return chat([{ role: 'user', content: prompt, images }], onText)
 }
 
-export function stopOllama(): void {
-  chatAbort?.abort()
+/** Arrête la conversation d'un couloir, ou toutes */
+export function stopOllama(lane?: Lane): void {
+  for (const [l, a] of aborts) if (!lane || l === lane) a.abort()
 }
 

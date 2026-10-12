@@ -30,6 +30,9 @@ import { isLean, leanChanged, leanClosed, leanShown, refreshGoals } from './lean
 
 const api = window.api
 
+/** Renseigné par proofs.ts : numéros (dans l'ordre du document) des preuves vérifiées par Lean à marquer dans le PDF */
+export const compileHooks = { leanQed: async (_main: string): Promise<number[]> => [] }
+
 export const TEXT_FILE = /\.(tex|bib|sty|cls|bst|txt|md|ltx|dtx|ins|cfg|def|clo|bbx|cbx|lbx|tikz|pgf|csv|dat|json|ya?ml|latexmkrc|log|lean)$/i
 export const IMAGE_FILE = /\.(png|jpe?g|gif|bmp|svg|webp|tiff?)$/i
 
@@ -336,7 +339,8 @@ export async function handleFsChanged(paths: string[]): Promise<void> {
       if (contents.has(p)) removeContent(p)
       continue
     }
-    if (!/\.(tex|bib|sty|cls|ltx)$/i.test(p) && !docs.has(p)) continue
+    // Fichiers ouverts, LaTeX, et tout fichier déjà lu (.lean modifié par l'IA, onglet fermé : sinon rouvert périmé)
+    if (!/\.(tex|bib|sty|cls|ltx)$/i.test(p) && !docs.has(p) && !contents.has(p)) continue
     let text: string
     try {
       text = await api.read(root, p)
@@ -504,7 +508,7 @@ export async function compile(opts: { auto?: boolean } = {}): Promise<void> {
   await saveAll()
   store.set({ compileStatus: 'running', compileProgress: '' })
   try {
-    const r = await api.compile(root, mainFile)
+    const r = await api.compile(root, mainFile, await compileHooks.leanQed(mainFile))
     if (store.get().root !== root) return
     const errors = r.diagnostics.filter((d) => d.severity === 'error').length
     const warnings = r.diagnostics.filter((d) => d.severity === 'warning').length

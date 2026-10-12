@@ -65,7 +65,7 @@ const leanHighlight = HighlightStyle.define([
 ])
 
 /** Abréviations de l'extension Lean de VS Code (les plus courantes) */
-const ABBREV: Record<string, string> = {
+export const ABBREV: Record<string, string> = {
   to: '→', r: '→', '->': '→', l: '←', '<-': '←', lr: '↔', iff: '↔', '<->': '↔', and: '∧', or: '∨', not: '¬', neg: '¬',
   forall: '∀', all: '∀', exists: '∃', ex: '∃', fun: 'λ', lam: 'λ', in: '∈', notin: '∉', sub: '⊆', subset: '⊆', ssub: '⊂',
   sup: '⊇', supset: '⊇', cap: '∩', inter: '∩', cup: '∪', union: '∪', empty: '∅', emptyset: '∅', le: '≤', '<=': '≤', ge: '≥',
@@ -79,6 +79,20 @@ const ABBREV: Record<string, string> = {
   _0: '₀', _1: '₁', _2: '₂', _3: '₃', _4: '₄', _5: '₅', _6: '₆', _7: '₇', _8: '₈', _9: '₉', _n: 'ₙ', _i: 'ᵢ',
   '^2': '²', '^3': '³', '^n': 'ⁿ'
 }
+
+/** Panneau des symboles pour un fichier .lean : abréviations par groupe (le caractère est ABBREV[abréviation]) */
+export const LEAN_SYMBOL_GROUPS: { name: string; items: string[] }[] = [
+  { name: 'Logique', items: ['forall', 'exists', 'not', 'and', 'or', 'to', 'iff', 'l', '|-', 'top', 'bot', 'fun'] },
+  { name: 'Ensembles', items: ['in', 'notin', 'sub', 'ssub', 'sup', 'cap', 'cup', 'empty', 'times', 'inf', 'sup2'] },
+  { name: 'Relations', items: ['le', 'ge', 'ne', 'equiv', 'simeq', 'iso', 'dvd'] },
+  { name: 'Nombres', items: ['N', 'Z', 'Q', 'R', 'C', 'infty', 'sqrt', 'sum', 'prod'] },
+  { name: 'Opérations', items: ['comp', 'cdot', 'inv', 'norm', '<', '>'] },
+  {
+    name: 'Grec',
+    items: ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'pi', 'rho', 'sigma', 'tau', 'phi', 'chi', 'psi', 'omega', 'Gamma', 'Delta', 'Theta', 'Lambda', 'Pi', 'Sigma', 'Phi', 'Psi', 'Omega']
+  },
+  { name: 'Indices et exposants', items: ['_0', '_1', '_2', '_3', '_4', '_5', '_6', '_7', '_8', '_9', '_n', '_i', '^2', '^3', '^n'] }
+]
 
 /** « \to » suivi d'une espace, d'une tabulation ou d'une ponctuation devient « → » */
 const abbreviations = EditorView.inputHandler.of((view, from, to, text) => {

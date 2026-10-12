@@ -65,6 +65,8 @@ export interface Settings {
   collabUserId: string
   /** Notifications du système des messages quand Lumen TeX est en arrière-plan */
   collabNotify: boolean
+  /** Preuves vérifiées par Lean, étape par étape : « LEAN » à côté du carré de fin de preuve dans le PDF */
+  leanQedMark: boolean
   /** Chef de session : dernier droit donné à chaque personne (identifiant), retrouvé dans ses autres sessions */
   collabKnown: Record<string, UserRight>
   /** Dernière version dont les nouveautés ont été présentées (vide : jamais) */

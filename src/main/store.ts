@@ -31,6 +31,7 @@ export const defaultSettings: Settings = {
   lastSeenVersion: '',
   collabUserId: '',
   collabNotify: true,
+  leanQedMark: true,
   pdfDarkMode: false,
   sidebarWidth: 260,
   pdfRatio: 0.5,

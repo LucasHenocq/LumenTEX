@@ -5,6 +5,7 @@ import type { CompileResult } from '../shared/types'
 import { parseDiagnostics } from './logparser'
 import { getSettings } from './store'
 import { findTectonic } from './tectonic'
+import { leanWrapper } from './leanQed'
 
 export const BUILD_DIR = '.lumentex'
 
@@ -28,7 +29,9 @@ export function cancelCompile(): void {
 export async function compile(
   root: string,
   mainRel: string,
-  onProgress: (line: string) => void
+  onProgress: (line: string) => void,
+  /** Preuves vérifiées par Lean à marquer « LEAN » (vide : compilation directe du fichier) */
+  leanQed: number[] = []
 ): Promise<CompileResult> {
   const started = Date.now()
   const settings = getSettings()
@@ -52,7 +55,12 @@ export async function compile(
 
   const args = ['-X', 'compile', '-Z', 'continue-on-errors', '--synctex', '--keep-logs', '--outdir', paths.outDir]
   if (settings.shellEscape) args.push('-Z', 'shell-escape')
-  args.push(path.basename(mainAbs))
+  const wrapper = path.join(paths.outDir, path.basename(mainAbs))
+  if (leanQed.length && settings.leanQedMark) {
+    // Le dossier du document reste cherché en premier pour ses \input et images (le fichier caché est dans .lumentex)
+    fs.writeFileSync(wrapper, leanWrapper(mainAbs, leanQed))
+    args.push('-Z', `search-path=${mainDir}`, wrapper)
+  } else args.push(path.basename(mainAbs))
 
   const env = { ...process.env }
   if (settings.tectonicCacheDir.trim()) env.TECTONIC_CACHE_DIR = settings.tectonicCacheDir.trim()

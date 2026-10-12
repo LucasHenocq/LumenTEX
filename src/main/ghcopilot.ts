@@ -8,6 +8,7 @@ import type { AiStatus } from '../shared/types'
 import { runLogin } from './login'
 import { tar } from './tar'
 import { getSettings, setSettings } from './store'
+import type { Lane } from './claude'
 
 // Moteur « GitHub Copilot » du copilot : CLI `copilot` en mode non interactif (-p) dans le dossier du projet.
 // La conversation continue grâce à un identifiant de session fixé par l'éditeur (--session-id).
@@ -23,8 +24,9 @@ const SYSTEM = [
 const AUTH_ERROR = /No authentication information found|not authenticated|authentication failed|\b401\b/i
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g
 
-let child: ChildProcess | null = null
+const children = new Map<Lane, ChildProcess>()
 const sessions = new Map<string, string>()
+const key = (root: string, lane: Lane): string => (lane === 'chat' ? root : `${root}\0${lane}`)
 const EXE = process.platform === 'win32' ? 'copilot.exe' : 'copilot'
 const installedBin = (): string => path.join(app.getPath('userData'), 'bin', EXE)
 
@@ -122,19 +124,20 @@ export function copilotModels(): Promise<string[]> {
   })
 }
 
-export function resetCopilot(root: string): void {
-  sessions.delete(root)
+export function resetCopilot(root: string, lane: Lane = 'chat'): void {
+  sessions.delete(key(root, lane))
 }
 
-export function stopCopilot(): void {
-  child?.kill()
+/** Arrête la conversation d'un couloir, ou toutes */
+export function stopCopilot(lane?: Lane): void {
+  for (const [l, c] of children) if (!lane || l === lane) c.kill()
 }
 
-export function askCopilot(root: string, prompt: string, onText: (t: string) => void): Promise<void> {
-  stopCopilot()
-  let session = sessions.get(root)
+export function askCopilot(root: string, prompt: string, onText: (t: string) => void, lane: Lane = 'chat'): Promise<void> {
+  stopCopilot(lane)
+  let session = sessions.get(key(root, lane))
   const first = !session
-  if (!session) sessions.set(root, (session = randomUUID()))
+  if (!session) sessions.set(key(root, lane), (session = randomUUID()))
   const run = runCopilot(
     root,
     [
@@ -146,14 +149,14 @@ export function askCopilot(root: string, prompt: string, onText: (t: string) => 
     ],
     onText
   )
-  child = run.child
+  if (run.child) children.set(lane, run.child)
   return run.done
     .catch((e: Error) => {
-      if (first || /pas connecté/.test(e.message)) sessions.delete(root)
+      if (first || /pas connecté/.test(e.message)) sessions.delete(key(root, lane))
       throw e
     })
     .finally(() => {
-      if (child === run.child) child = null
+      if (children.get(lane) === run.child) children.delete(lane)
     })
 }
 

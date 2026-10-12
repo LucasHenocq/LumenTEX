@@ -10,6 +10,7 @@ import { contents } from '../lib/projectIndex'
 import { store, updateSettings, useApp } from '../store'
 import { withDisplayMath, withInlineMath } from '../lib/mathText'
 import { isLean, leanProblems } from '../lib/lean'
+import { proofSummary } from '../lib/proofs'
 
 type Msg = { role: 'user' | 'assistant'; content: string }
 
@@ -41,14 +42,28 @@ async function attachedBlocks(files: Attached[]): Promise<string> {
   return blocks.join('\n')
 }
 
-/** Erreurs à signaler à l'IA : messages de Lean pour un fichier .lean, sinon ceux de la dernière compilation */
-function problems(path: string | null): string[] {
-  if (isLean(path)) return leanProblems(path)
-  return store
+/**
+ * Problèmes à signaler à l'IA, quel que soit le fichier ouvert : dernière compilation LaTeX, messages de Lean des
+ * fichiers .lean ouverts (le fichier actif d'abord) et état des preuves vérifiées par Lean dans le document
+ */
+function problems(path: string | null): string {
+  const latex = store
     .get()
     .diagnostics.filter((d) => d.severity !== 'info')
-    .slice(0, 15)
+    .sort((a, b) => (a.severity === 'error' ? 0 : 1) - (b.severity === 'error' ? 0 : 1))
+    .slice(0, 10)
     .map((d) => `- ${d.severity === 'error' ? 'Erreur' : 'Avertissement'} ${d.file ?? ''}${d.line ? ':' + d.line : ''} : ${d.message}`)
+  const leanFiles = Object.keys(store.get().lean.diags).sort((a, b) => (a === path ? -1 : b === path ? 1 : 0))
+  const lean = leanFiles.flatMap(leanProblems).slice(0, 15)
+  const tex = path && /\.tex$/i.test(path) ? path : store.get().mainFile
+  const proofs = tex ? proofSummary(tex) : []
+  return [
+    latex.length ? `Problèmes de la dernière compilation LaTeX :\n${latex.join('\n')}` : '',
+    lean.length ? `Messages de Lean :\n${lean.join('\n')}` : '',
+    proofs.length ? `Preuves de ${tex} vérifiées par Lean :\n${proofs.join('\n')}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 // ponytail: fichier ouvert tronqué à 40 000 caractères, n'envoyer que les sections utiles si les gros documents posent problème
@@ -68,7 +83,7 @@ async function ollamaContext(files: Attached[]): Promise<string> {
     'Réponds en français, de façon concise. Mets tout code à insérer dans un bloc ```latex (ou ```lean pour du Lean).',
     path ? `\nFichier ouvert : ${path}\n\`\`\`${lang}\n${text.slice(0, MAX_FILE)}\n\`\`\`` : '\nAucun fichier ouvert.',
     sel ? `\nSélection de l’utilisateur :\n\`\`\`${lang}\n${sel}\n\`\`\`` : '',
-    errors.length ? `\n${isLean(path) ? 'Messages de Lean' : 'Problèmes de la dernière compilation'} :\n${errors.join('\n')}` : '',
+    errors ? `\n${errors}` : '',
     await attachedBlocks(files)
   ].join('\n')
 }
@@ -84,7 +99,7 @@ async function agentPrompt(question: string, files: Attached[]): Promise<string>
   return [
     path ? `[Fichier ouvert : ${path}, curseur ligne ${line}]` : '',
     sel ? `[Sélection :\n${sel}\n]` : '',
-    errors.length ? `[${isLean(path) ? 'Messages de Lean' : 'Problèmes de la dernière compilation'} :\n${errors.join('\n')}\n]` : '',
+    errors ? `[${errors}\n]` : '',
     inProject.length ? `[Fichiers joints par l’utilisateur, à lire : ${inProject.join(', ')}]` : '',
     await attachedBlocks(files.filter((a) => a.external)),
     question
@@ -581,14 +596,6 @@ export default function Copilot(): React.JSX.Element {
     []
   )
   useEffect(() => on('copilot:show', () => setHeight((h) => h || 280)), [])
-  useEffect(
-    () =>
-      on('copilot:run', ({ q, done }) => {
-        setHeight((h) => h || 280)
-        void askRef.current(q).then(done)
-      }),
-    []
-  )
 
   const resetChat = (): void => {
     setMsgs([])

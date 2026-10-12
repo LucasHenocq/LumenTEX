@@ -76,7 +76,7 @@ const api = {
 
   popupMenu: (items: ContextMenuItem[]): Promise<string | null> => invoke('menu:popup', items),
 
-  compile: (root: string, main: string): Promise<CompileResult> => invoke('compile:run', root, main),
+  compile: (root: string, main: string, leanQed: number[] = []): Promise<CompileResult> => invoke('compile:run', root, main, leanQed),
   cancelCompile: (): Promise<void> => invoke('compile:cancel'),
   buildPaths: (root: string, main: string): Promise<{ outDir: string; pdf: string; synctex: string; log: string }> =>
     invoke('compile:paths', root, main),
@@ -129,6 +129,11 @@ const api = {
   onCollabData: (cb: (id: string, data: Uint8Array) => void) => on<[string, Uint8Array]>('collab:data', cb),
   userName: (): Promise<string> => invoke('app:user-name'),
   aiStop: (): Promise<void> => invoke('ai:stop'),
+  aiLean: (engine: AiEngine, root: string, prompt: string, history: { role: string; content: string }[]): Promise<void> =>
+    invoke('ai:lean', engine, root, prompt, history),
+  aiLeanReset: (root: string): Promise<void> => invoke('ai:lean-reset', root),
+  aiLeanStop: (): Promise<void> => invoke('ai:lean-stop'),
+  onAiLeanChunk: (cb: (text: string) => void) => on<[string]>('ai:lean-chunk', cb),
   onAiChunk: (cb: (text: string) => void) => on<[string]>('ai:chunk', cb),
   readPdf: (p: string): Promise<Uint8Array | null> => invoke('pdf:read', p),
   exportPdf: (src: string, name: string): Promise<string | null> => invoke('pdf:export', src, name),

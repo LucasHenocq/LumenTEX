@@ -19,8 +19,11 @@ const SYSTEM = [
   'Quand tu proposes du code sans l’appliquer, mets-le dans un bloc ```latex.'
 ].join(' ')
 
-let child: ChildProcess | null = null
+/** Conversation : panneau du copilot (chat) ou vérification des preuves par Lean (lean), chacune sa session et son processus */
+export type Lane = 'chat' | 'lean'
+const children = new Map<Lane, ChildProcess>()
 const sessions = new Map<string, string>()
+const key = (root: string, lane: Lane): string => (lane === 'chat' ? root : `${root}\0${lane}`)
 
 function claudeBin(): string {
   // Lancée depuis le Finder ou le bureau, l'app n'a pas forcément le PATH du terminal : on cherche aux emplacements habituels
@@ -112,37 +115,41 @@ export function claudeUsage(): Promise<ClaudeUsage | null> {
   })
 }
 
-export function resetClaude(root: string): void {
-  sessions.delete(root)
+export function resetClaude(root: string, lane: Lane = 'chat'): void {
+  sessions.delete(key(root, lane))
 }
 
-export function stopClaude(): void {
-  child?.kill()
+/** Arrête la conversation d'un couloir, ou toutes */
+export function stopClaude(lane?: Lane): void {
+  for (const [l, c] of children) if (!lane || l === lane) c.kill()
 }
 
 export function askClaude(
   root: string,
   prompt: string,
   onText: (t: string) => void,
-  onUsage: (u: ClaudeUsage) => void
+  onUsage: (u: ClaudeUsage) => void,
+  lane: Lane = 'chat'
 ): Promise<void> {
-  stopClaude()
+  stopClaude(lane)
   const args = [
     // Peut éditer les fichiers, mais pas lancer de commandes (aucune fenêtre pour valider)
     '--permission-mode', 'acceptEdits',
+    // Recherche sur Internet (documentation, noms de lemmes de Mathlib…), refusée sinon en mode headless
+    '--allowedTools', 'WebSearch', 'WebFetch',
     '--append-system-prompt', SYSTEM
   ]
-  const session = sessions.get(root)
+  const session = sessions.get(key(root, lane))
   if (session) args.push('--resume', session)
   const run = runClaude(root, args, prompt, {
     onText,
     onTool: (name) => onText(`\n🔧 ${name}…\n`),
     onUsage,
-    onSession: (id) => sessions.set(root, id)
+    onSession: (id) => sessions.set(key(root, lane), id)
   })
-  child = run.child
+  children.set(lane, run.child)
   return run.done.finally(() => {
-    if (child === run.child) child = null
+    if (children.get(lane) === run.child) children.delete(lane)
   })
 }
 

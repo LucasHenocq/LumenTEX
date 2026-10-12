@@ -7,6 +7,7 @@ import path from 'path'
 import type { AiStatus } from '../shared/types'
 import { tar } from './tar'
 import { getSettings } from './store'
+import type { Lane } from './claude'
 
 // Moteur « Gemini » du copilot : CLI Gemini de Google (paquet npm @google/gemini-cli, un script Node).
 // Elle tourne avec le Node intégré à l'app (ELECTRON_RUN_AS_NODE) : rien d'autre à installer sur le Mac.
@@ -25,8 +26,9 @@ const SYSTEM = [
 
 const AUTH_ERROR = /API key not valid|API_KEY_INVALID|auth method|GEMINI_API_KEY|unauthenticated|\b401\b/i
 
-let child: ChildProcess | null = null
+const children = new Map<Lane, ChildProcess>()
 const sessions = new Map<string, string>()
+const key = (root: string, lane: Lane): string => (lane === 'chat' ? root : `${root}\0${lane}`)
 const baseDir = (): string => path.join(app.getPath('userData'), 'gemini')
 const installedEntry = (): string => path.join(baseDir(), 'package', 'bundle', 'gemini.js')
 const cliHome = (): string => path.join(baseDir(), 'home')
@@ -156,17 +158,18 @@ export async function installGemini(onProgress: (msg: string) => void): Promise<
   return geminiStatus()
 }
 
-export function resetGemini(root: string): void {
-  sessions.delete(root)
+export function resetGemini(root: string, lane: Lane = 'chat'): void {
+  sessions.delete(key(root, lane))
 }
 
-export function stopGemini(): void {
-  child?.kill()
+/** Arrête la conversation d'un couloir, ou toutes */
+export function stopGemini(lane?: Lane): void {
+  for (const [l, c] of children) if (!lane || l === lane) c.kill()
 }
 
-export function askGemini(root: string, prompt: string, onText: (t: string) => void): Promise<void> {
-  stopGemini()
-  const session = sessions.get(root)
+export function askGemini(root: string, prompt: string, onText: (t: string) => void, lane: Lane = 'chat'): Promise<void> {
+  stopGemini(lane)
+  const session = sessions.get(key(root, lane))
   const id = session ?? randomUUID()
   const run = runGemini(
     root,
@@ -178,11 +181,11 @@ export function askGemini(root: string, prompt: string, onText: (t: string) => v
     ],
     { onText, onTool: (name) => onText(`\n🔧 ${name}…\n`) }
   )
-  child = run.child
+  if (run.child) children.set(lane, run.child)
   return run.done
-    .then(() => void sessions.set(root, id))
+    .then(() => void sessions.set(key(root, lane), id))
     .finally(() => {
-      if (child === run.child) child = null
+      if (children.get(lane) === run.child) children.delete(lane)
     })
 }
 
@@ -203,6 +206,7 @@ export function runGemini(
     let buf = ''
     let err = ''
     let failed = ''
+    let wrote = false
     // Connexion expirée : la CLI demande d'ouvrir le navigateur et attendrait une réponse indéfiniment
     const needsLogin = (t: string): void => {
       if (!/authentication page|\[Y\/n\]/i.test(t)) return
@@ -222,7 +226,10 @@ export function runGemini(
         } catch {
           continue
         }
-        if (j.type === 'message' && j.role === 'assistant' && typeof j.content === 'string') h.onText(j.content)
+        if (j.type === 'message' && j.role === 'assistant' && typeof j.content === 'string') {
+          wrote = true
+          h.onText(j.content)
+        }
         else if (j.type === 'tool_use') h.onTool?.(String(j.tool_name))
         else if (j.type === 'error') failed = String(j.message ?? 'erreur')
         else if (j.type === 'result' && j.status === 'error') failed = String(j.error?.message ?? failed ?? 'erreur')
@@ -235,6 +242,10 @@ export function runGemini(
     c.on('error', (e) => reject(new Error(`Gemini introuvable (${e.message})`)))
     c.on('close', (code, signal) => {
       if (signal && !failed) return resolve() // arrêté par l'utilisateur
+      // Quota de la clé gratuite épuisé (la CLI réessaie puis abandonne, parfois sans rien répondre)
+      if (!wrote && /RESOURCE_EXHAUSTED|status: 429|\b429\b/.test(err + failed))
+        return reject(new Error('Quota de Gemini dépassé pour le moment : réessayez dans un moment, ou vérifiez votre forfait sur Google AI Studio.'))
+      if (!wrote && !failed && !code) return reject(new Error('Gemini n’a rien répondu : réessayez.'))
       if (failed || code) {
         const msg = failed || err.trim().split('\n').slice(-3).join('\n') || `code ${code}`
         if (AUTH_ERROR.test(msg)) {

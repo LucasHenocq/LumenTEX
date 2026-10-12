@@ -16,6 +16,8 @@ export interface Proof {
   hash: string
   /** Position du \begin de l'énoncé (la coche est sur sa ligne) */
   from: number
+  /** Position du \begin{proof} */
+  proofFrom: number
 }
 
 const PROOF_ENV = /^(proof|preuve|demo|dem|demonstration|démonstration|pf)\*?$/i
@@ -76,7 +78,8 @@ export function findProofs(text: string): Proof[] {
       statement: statement.replace(/\label\{[^}]*\}/g, '').trim(),
       proof: proof.trim(),
       hash: hash(statement + '\0' + proof),
-      from: found.start
+      from: found.start,
+      proofFrom: m.index
     })
   }
   return out

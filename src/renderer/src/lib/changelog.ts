@@ -6,6 +6,19 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.3.3',
+    date: '2026-10-12',
+    items: [
+      'L’assistant IA voit en même temps les erreurs LaTeX, les messages de Lean et l’état des preuves vérifiées du document (par exemple : « refusée à l’étape 2 »), quel que soit le fichier ouvert.',
+      'Lean vérifie que la preuve suit bien la vôtre : si l’IA conclut sans utiliser une de vos étapes, elle doit recommencer ; sinon l’étape est signalée ⚠ dans la fenêtre de validation.',
+      'Un fichier .lean modifié pendant que son onglet est fermé (par l’IA, par exemple) se rouvre bien avec son nouveau contenu.',
+      'La vérification par l’IA se suit dans une fenêtre à part, qu’on peut déplacer, agrandir, masquer et rouvrir en cliquant sur « … » dans la marge ; elle se rouvre d’elle-même à la fin. Le copilot reste libre pendant ce temps, et « Arrêter » interrompt la vérification.',
+      'Dans le PDF, « LEAN » s’inscrit à côté du carré de fin des preuves vérifiées étape par étape (désactivable dans Réglages → Lean). Le fichier .tex n’est pas modifié.',
+      'Fichiers .lean : le panneau Σ propose les symboles Lean (∀, ∃, ℝ, →…, avec leur abréviation), et ces fichiers ont leur propre icône.',
+      'Claude peut faire des recherches sur Internet (documentation, noms de lemmes de Mathlib). Gemini aussi ; s’il a épuisé son quota gratuit, un message le dit au lieu d’une réponse vide.'
+    ]
+  },
+  {
     version: '1.3.2',
     date: '2026-10-12',
     items: [

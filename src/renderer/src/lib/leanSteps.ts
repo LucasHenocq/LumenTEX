@@ -12,6 +12,40 @@ export interface LeanStep {
   claim: string
   /** Problème signalé par l'IA (étape fausse ou non justifiée), ou laissée en sorry */
   problem: string | null
+  /** Lean conclut sans cette étape : la preuve Lean a pris un autre chemin que la preuve LaTeX */
+  unused?: boolean
+}
+
+/**
+ * Variantes du théorème, chacune privée d'une étape (« clear etapeK » juste avant l'étape suivante). Une variante que
+ * Lean accepte prouve que l'étape ne sert pas. lines : plage de lignes (à partir de 1) de chaque variante dans text
+ */
+export function withoutSteps(code: string, name: string, steps: LeanStep[]): { text: string; variants: { n: number; from: number; to: number }[] } | null {
+  const lines = code.split('\n')
+  const start = lines.findIndex((l) => new RegExp(`^\\s*theorem\\s+${name}\\b`).test(l))
+  if (start < 0) return null
+  const head = lines.slice(0, start)
+  const theorem = lines.slice(start)
+  const indentOf = (l: string): number => /^[\s·.]*/.exec(l)![0].length
+  const out = [...head]
+  const variants: { n: number; from: number; to: number }[] = []
+  const last = Math.max(...steps.map((s) => s.n))
+  for (const s of steps) {
+    // La dernière étape est la conclusion ; une étape sans « have etapeK » ne peut pas être retirée
+    const h = theorem.findIndex((l) => new RegExp(`\\bhave\\s+etape${s.n}\\b`).test(l))
+    if (s.n === last || h < 0) continue
+    // Juste après le bloc du have (première ligne non vide moins indentée ou au même niveau) : avant tout usage
+    const indent = indentOf(theorem[h])
+    let at = h + 1
+    while (at < theorem.length && (!theorem[at].trim() || indentOf(theorem[at]) > indent)) at++
+    if (at >= theorem.length) continue
+    const variant = [...theorem.slice(0, at), `${' '.repeat(indent)}clear etape${s.n}`, ...theorem.slice(at)]
+    variant[0] = variant[0].replace(new RegExp(`\\btheorem\\s+${name}\\b`), `theorem ${name}_sans_etape${s.n}`)
+    out.push('')
+    variants.push({ n: s.n, from: out.length + 1, to: out.length + variant.length })
+    out.push(...variant)
+  }
+  return variants.length ? { text: out.join('\n'), variants } : null
 }
 
 // Éventuellement derrière la puce d'un cas (« · -- Étape 1 : … »)

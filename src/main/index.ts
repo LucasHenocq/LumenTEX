@@ -618,8 +618,8 @@ function registerIpc(): void {
   })
 
   // --- Compilation ---
-  ipcMain.handle('compile:run', (_e, root: string, mainRel: string) =>
-    compile(root, mainRel, (line) => send('compile:progress', line))
+  ipcMain.handle('compile:run', (_e, root: string, mainRel: string, leanQed: number[] = []) =>
+    compile(root, mainRel, (line) => send('compile:progress', line), leanQed)
   )
   ipcMain.handle('compile:cancel', () => cancelCompile())
   ipcMain.handle('compile:paths', (_e, root: string, mainRel: string) => buildPaths(root, mainRel))
@@ -629,11 +629,31 @@ function registerIpc(): void {
     for (const e of fs.existsSync(dir) ? fs.readdirSync(dir) : []) if (e !== 'lean') fs.rmSync(path.join(dir, e), { recursive: true, force: true })
     return true
   })
+  // Bouton « Arrêter » du copilot : sa conversation seulement (une vérification Lean continue)
   ipcMain.handle('ai:stop', () => {
-    stopOllama()
-    stopClaude()
-    stopCopilot()
-    stopGemini()
+    stopOllama('chat')
+    stopClaude('chat')
+    stopCopilot('chat')
+    stopGemini('chat')
+  })
+  // Vérification des preuves par Lean : conversation à part, réponse envoyée morceau par morceau à la fenêtre flottante
+  ipcMain.handle('ai:lean', (_e, engine: AiEngine, root: string, prompt: string, history: { role: string; content: string }[]) => {
+    const onText = (t: string): void => send('ai:lean-chunk', t)
+    if (engine === 'claude') return askClaude(root, prompt, onText, (u) => send('ai:usage', u), 'lean')
+    if (engine === 'copilot') return askCopilot(root, prompt, onText, 'lean')
+    if (engine === 'gemini') return askGemini(root, prompt, onText, 'lean')
+    return askOllama(history, onText, 'lean')
+  })
+  ipcMain.handle('ai:lean-reset', (_e, root: string) => {
+    resetClaude(root, 'lean')
+    resetCopilot(root, 'lean')
+    resetGemini(root, 'lean')
+  })
+  ipcMain.handle('ai:lean-stop', () => {
+    stopOllama('lean')
+    stopClaude('lean')
+    stopCopilot('lean')
+    stopGemini('lean')
   })
   const engines = {
     // Ollama : « connexion » = lancer le serveur, « installation » = télécharger le modèle par défaut

@@ -8,6 +8,7 @@ import TectonicSetup from '../TectonicSetup'
 import LeanSetup from '../LeanSetup'
 import { closeModal, ModalFrame } from '../Modals'
 import { kb } from '../../lib/keys'
+import { compile } from '../../lib/actions'
 
 type Section = 'appearance' | 'editor' | 'compile' | 'pdf' | 'lean' | 'ai'
 
@@ -270,9 +271,17 @@ export default function SettingsModal(): React.JSX.Element {
             <>
               <div className="settings-subtitle">Vérification des preuves</div>
               {lean.ready ? (
-                <div className="engine-info">
-                  <span className="dot ok" /> {lean.version}
-                </div>
+                <>
+                  <div className="engine-info">
+                    <span className="dot ok" /> {lean.version}
+                  </div>
+                  <Row
+                    label="« LEAN » dans le PDF"
+                    hint="À côté du carré de fin des preuves vérifiées étape par étape. Votre fichier .tex n’est pas modifié."
+                  >
+                    <Toggle value={s.leanQedMark} onChange={(v) => void updateSettings({ leanQedMark: v }).then(() => compile({ auto: true }))} />
+                  </Row>
+                </>
               ) : (
                 <LeanSetup />
               )}

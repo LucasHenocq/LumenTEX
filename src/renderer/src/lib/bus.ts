@@ -12,8 +12,6 @@ export interface BusEvents {
   'pdf:command': string
   /** Question envoyée au copilot (ex. bouton ✨ d'une erreur) */
   'copilot:ask': string
-  /** Question posée par l'app (vérification d'une preuve) : done reçoit la réponse complète, null si l'assistant n'est pas disponible */
-  'copilot:run': { q: string; done: (answer: string | null) => void }
   /** Déplie le panneau du copilot (ex. depuis les réglages, pour se connecter) */
   'copilot:show': void
 }
