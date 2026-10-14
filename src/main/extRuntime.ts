@@ -65,8 +65,9 @@ export function handleExtensionProtocol(): void {
     const url = new URL(req.url)
     const host = url.hostname
     const [, first, ...rest] = url.pathname.split('/')
-    // Modules chargés par la fenêtre (autre origine) ou par un cadre à origine opaque : CORS ouvert
-    const cors = { 'Access-Control-Allow-Origin': '*' }
+    // Modules chargés par la fenêtre (autre origine) ou par un cadre à origine opaque : CORS ouvert. Jamais mis en
+    // cache : après une mise à jour, le rechargement doit prendre le nouveau code
+    const cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
     if (host === 'app') {
       const e = installedExtension(first)
       if (!e || !trusted(e.ext)) return notFound()
@@ -157,8 +158,8 @@ export function dropExtensionStorage(id: string): void {
 const nodeParts = new Map<string, UtilityProcess>()
 
 /** Lance (ou relance) la partie Node.js d'une extension de confiance, reliée à la fenêtre par un MessagePort */
-export function startNodePart(id: string, win: BrowserWindow): void {
-  stopNodePart(id)
+export async function startNodePart(id: string, win: BrowserWindow): Promise<void> {
+  await stopNodePart(id)
   const e = installedExtension(id)
   if (!e?.ext.node || !trusted(e.ext)) throw new Error('Cette extension n’a pas de partie Node.js utilisable')
   // Dossier de données de l'extension (programmes téléchargés…) : hors de son dossier, dont l'empreinte doit rester
@@ -166,7 +167,8 @@ export function startNodePart(id: string, win: BrowserWindow): void {
   fs.mkdirSync(dataDir, { recursive: true })
   const child = utilityProcess.fork(path.join(__dirname, 'extNodeHost.js'), [path.join(e.folder, e.ext.node)], {
     serviceName: `Extension ${e.ext.name}`,
-    cwd: e.folder,
+    // Pas son propre dossier : sous Windows, il serait verrouillé (mise à jour, désinstallation impossibles)
+    cwd: dataDir,
     env: { ...process.env, LUMEN_EXT_DATA: dataDir, LUMEN_VERSION: app.getVersion() }
   })
   nodeParts.set(id, child)
@@ -176,13 +178,24 @@ export function startNodePart(id: string, win: BrowserWindow): void {
   win.webContents.postMessage('ext:node-port', id, [port2])
 }
 
-export function stopNodePart(id: string): void {
-  nodeParts.get(id)?.kill()
+/** Arrête la partie Node.js et attend la fin de son processus (3 s au plus) */
+export function stopNodePart(id: string): Promise<void> {
+  const child = nodeParts.get(id)
   nodeParts.delete(id)
+  if (!child) return Promise.resolve()
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 3000)
+    child.once('exit', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+    child.kill()
+  })
 }
 
 export function stopAllNodeParts(): void {
-  for (const id of [...nodeParts.keys()]) stopNodePart(id)
+  for (const child of nodeParts.values()) child.kill()
+  nodeParts.clear()
 }
 
 // ---------------------------------------------------------------------------

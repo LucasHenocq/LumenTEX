@@ -434,9 +434,13 @@ function registerIpc(): void {
   // --- Extensions (sans code) ---
   ipcMain.handle('ext:list', () => installedExtensions())
   ipcMain.handle('ext:catalog', () => fetchCatalog().catch(() => null))
-  ipcMain.handle('ext:install', (_e, id: string) => installFromCatalog(id))
-  ipcMain.handle('ext:uninstall', (_e, id: string) => {
-    stopNodePart(id)
+  // Partie Node.js arrêtée d'abord : ses fichiers peuvent alors être remplacés ou effacés
+  ipcMain.handle('ext:install', async (_e, id: string) => {
+    await stopNodePart(id)
+    return installFromCatalog(id)
+  })
+  ipcMain.handle('ext:uninstall', async (_e, id: string) => {
+    await stopNodePart(id)
     uninstallExtension(id)
     dropExtensionStorage(id)
   })
@@ -446,9 +450,10 @@ function registerIpc(): void {
     const r = await dialog.showOpenDialog(win!, { title: 'Dossier de l’extension (avec lumen-extension.json)', properties: ['openDirectory'] })
     return r.canceled ? null : { folder: r.filePaths[0], ext: readExtension(r.filePaths[0]) }
   })
-  ipcMain.handle('ext:install-path', (_e, folder: string, link?: boolean) =>
-    link && getSettings().extDevMode ? linkExtensionFolder(folder) : installExtensionFolder(folder)
-  )
+  ipcMain.handle('ext:install-path', async (_e, folder: string, link?: boolean) => {
+    await stopNodePart(readExtension(folder).id)
+    return link && getSettings().extDevMode ? linkExtensionFolder(folder) : installExtensionFolder(folder)
+  })
   ipcMain.handle('ext:fetch', (_e, id: string, url: string, init: Parameters<typeof extensionFetch>[2]) => extensionFetch(id, url, init))
   ipcMain.handle('ext:storage', (_e, id: string) => extensionStorage(id))
   ipcMain.handle('ext:storage-set', (_e, id: string, key: string, value: unknown) => setExtensionStorage(id, key, value))

@@ -20,6 +20,8 @@ export interface Language {
   isMain?: (text: string) => boolean
   /** Modifier un fichier de ce langage relance la compilation automatique (par défaut : oui) */
   autoCompile?: boolean
+  /** Icône des fichiers (SVG en data URL) ; absente : celle de Lumen TeX selon l'extension du fichier */
+  icon?: string
   /** « lumen », ou l'identifiant de l'extension */
   owner: string
 }
@@ -74,20 +76,24 @@ const languages: Language[] = []
 const compilers: Compiler[] = []
 const availability = new Map<string, Availability>()
 
-/** Les changements de compilateurs (ou de leur disponibilité) redessinent les menus */
+/** Les changements de langages, de compilateurs (ou de leur disponibilité) redessinent icônes et menus */
 const changed = (): void => store.set((s) => ({ compilersVersion: s.compilersVersion + 1 }))
 
 /** Même identifiant : le nouveau remplace l'ancien (le code d'une extension complète le langage de son manifeste) */
 export function registerLanguage(l: Language): () => void {
   const i = languages.findIndex((x) => x.id === l.id)
   const previous = i >= 0 ? languages[i] : null
+  // L'icône du manifeste reste si le code n'en donne pas
+  if (previous && !l.icon) l = { ...l, icon: previous.icon }
   if (previous) languages[i] = l
   else languages.push(l)
+  changed()
   return () => {
     const j = languages.indexOf(l)
     if (j < 0) return
     if (previous) languages[j] = previous
     else languages.splice(j, 1)
+    changed()
   }
 }
 

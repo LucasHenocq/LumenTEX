@@ -1,4 +1,6 @@
 import { BookMarked, File, FileCode2, FileImage, FileText, Folder, FolderOpen, Settings } from 'lucide-react'
+import { languageOf } from '../lib/languages'
+import { useApp } from '../store'
 
 /** Fichier Lean : un « ∀ » dans un carré arrondi, au trait des icônes lucide */
 function LeanIcon({ size }: { size: number }): React.JSX.Element {
@@ -21,6 +23,10 @@ function LeanIcon({ size }: { size: number }): React.JSX.Element {
 }
 
 export default function FileIcon({ name, isDir, open, size = 15 }: { name: string; isDir?: boolean; open?: boolean; size?: number }): React.JSX.Element {
+  // Langage ajouté par une extension, avec son icône
+  useApp((s) => s.compilersVersion)
+  const lang = isDir ? undefined : languageOf(name)
+  if (lang?.icon) return <img src={lang.icon} width={size} height={size} className="fi fi-ext" alt="" draggable={false} />
   if (isDir) {
     const I = open ? FolderOpen : Folder
     return <I size={size} className="fi fi-dir" strokeWidth={1.8} />

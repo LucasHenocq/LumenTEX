@@ -131,7 +131,7 @@ window.addEventListener('message', async (e) => {
   } else if (m.t === 'init') {
     const lumen = makeLumen(m)
     try {
-      const mod = await import(`./${m.ext.main}`)
+      const mod = await import(`./${m.ext.main}?t=${Date.now()}`)
       await mod.activate?.(lumen)
       post({ t: 'ready' })
     } catch (err) {

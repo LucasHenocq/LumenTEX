@@ -378,13 +378,14 @@ function makeApi(r: Running): Record<string, unknown> {
   }
 
   const languages = {
-    register: (l: { id: string; name: string; extensions: string[]; editor?: Extension; autoCompile?: boolean }) => {
+    register: (l: { id: string; name: string; extensions: string[]; editor?: Extension; autoCompile?: boolean; icon?: string }) => {
       const dispose = registerLanguage({
         id: String(l.id),
         name: String(l.name),
         extensions: (l.extensions ?? []).map((e) => String(e).toLowerCase()),
         editor: r.trusted ? l.editor : undefined,
         autoCompile: l.autoCompile,
+        icon: typeof l.icon === 'string' && l.icon.startsWith('data:image/svg+xml') ? l.icon : undefined,
         owner: ext.id
       })
       reconfigureAll()
@@ -688,7 +689,8 @@ async function startOne(ext: ExtensionInfo): Promise<void> {
     }
     if (ext.main) {
       await guard(r, async () => {
-        const mod = (await import(/* @vite-ignore */ `lumen-ext://app/${ext.id}/${ext.main}`)) as { activate?: Fn; deactivate?: Fn }
+        // Adresse unique à chaque chargement : jamais l'ancien code d'une extension mise à jour
+        const mod = (await import(/* @vite-ignore */ `lumen-ext://app/${ext.id}/${ext.main}?t=${Date.now()}`)) as { activate?: Fn; deactivate?: Fn }
         r.disposers.push(() => void guard(r, () => mod.deactivate?.()))
         await mod.activate?.(r.api)
       })
@@ -700,7 +702,7 @@ async function startOne(ext: ExtensionInfo): Promise<void> {
     if (allow) f.setAttribute('allow', allow)
     f.className = 'ext-frame'
     f.title = ext.name
-    f.src = `lumen-ext://sb-${ext.id}/__host.html`
+    f.src = `lumen-ext://sb-${ext.id}/__host.html?t=${Date.now()}`
     framesLayer().appendChild(f)
     r.frame = f
   }
@@ -731,7 +733,7 @@ export async function startExtensions(): Promise<void> {
   started = true
   // Langages déclarés dans les manifestes (sans code nécessaire : un compilateur peut venir d'ailleurs)
   for (const ext of store.get().extensions.filter(enabled))
-    for (const l of ext.languages) registerLanguage({ id: l.id, name: l.name, extensions: l.extensions, owner: ext.id })
+    for (const l of ext.languages) registerLanguage({ id: l.id, name: l.name, extensions: l.extensions, icon: l.icon || undefined, owner: ext.id })
   // Une extension lente à démarrer ne retarde pas l'ouverture du projet plus de 3 s
   await Promise.race([Promise.all(store.get().extensions.map((e) => startOne(e))), new Promise((r) => setTimeout(r, 3000))])
   ensureMainFile()

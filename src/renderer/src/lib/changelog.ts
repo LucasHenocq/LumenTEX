@@ -6,6 +6,16 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.5.2',
+    date: '2026-10-14',
+    items: [
+      'Mettre à jour ou désinstaller une extension qui lance un programme (comme Typst) ne la laisse plus vide sous Windows : la nouvelle version est préparée à côté, et l’ancienne n’est retirée qu’une fois remplacée.',
+      'Après la mise à jour d’une extension, c’est bien sa nouvelle version qui fonctionne, sans avoir à redémarrer Lumen TeX.',
+      'Les fichiers des langages ajoutés par les extensions ont leur icône (Typst par exemple), et le panneau Σ propose les symboles du langage du fichier ouvert : plus de symboles LaTeX dans un fichier Typst.',
+      'Session partagée : un fichier partagé comme texte reste du texte chez les participants qui n’ont pas l’extension de son langage.'
+    ]
+  },
+  {
     version: '1.5.1',
     date: '2026-10-14',
     items: [

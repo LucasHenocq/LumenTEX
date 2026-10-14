@@ -612,7 +612,8 @@ type Change = { path: string; text?: string; bin?: Uint8Array }
 async function readChange(path: string): Promise<Change | null> {
   if (!s?.root || isHidden(path)) return null
   const sess = s
-  if (isTextFile(path)) {
+  // Déjà partagé comme texte (un autre participant a l'extension de ce langage) : texte aussi chez moi
+  if (isTextFile(path) || sess.files.get(path) instanceof Y.Text) {
     const text = await api.read(sess.root!, path)
     // Écho de nos propres écritures (éventuellement déjà dépassées par la frappe) : ignoré
     if (isOwnWrite(path, text)) return null

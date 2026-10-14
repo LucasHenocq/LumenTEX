@@ -5,6 +5,7 @@ import { SYMBOL_GROUPS } from '../../latex/symbols'
 import { insertText } from '../../lib/actions'
 import { extensions } from '../../lib/extensions'
 import { isLean } from '../../lib/lean'
+import { languageOf } from '../../lib/languages'
 import { useApp } from '../../store'
 
 const renderCache = new Map<string, string>()
@@ -21,14 +22,26 @@ function render(tex: string): string {
 /** Un symbole : affiché (KaTeX pour LaTeX, caractère pour Lean), inséré tel quel ou comme gabarit (snippet) */
 type Item = { key: string; title: string; insert: string; snippet: boolean; html?: string; text?: string }
 
-/** LaTeX : commandes rendues par KaTeX ; Lean (fichier .lean actif) : caractères Unicode, avec leur abréviation \… */
-function groupsFor(lean: boolean): { name: string; items: Item[] }[] {
-  if (lean)
+/**
+ * Selon le langage du fichier actif. LaTeX (et aucun fichier) : commandes rendues par KaTeX ; Lean : caractères Unicode,
+ * avec leur abréviation \… ; autre langage : groupes des extensions pour ce langage (« caractère nom », caractère inséré).
+ */
+function groupsFor(lang: string): { name: string; items: Item[] }[] {
+  const extGroups = extensions().flatMap((e) => e.symbols.filter((g) => g.language === lang))
+  if (lang === 'lean')
     return LEAN_SYMBOL_GROUPS.map((g) => ({
       name: g.name,
       items: g.items.map((a) => ({ key: a, title: `\\${a}`, insert: ABBREV[a], snippet: false, text: ABBREV[a] }))
     }))
-  return [...SYMBOL_GROUPS, ...extensions().flatMap((e) => e.symbols.map((g) => ({ name: g.name, items: g.items.map((i): [string] => [i]) })))].map((g) => ({
+  if (lang !== 'latex')
+    return extGroups.map((g) => ({
+      name: g.name,
+      items: g.items.map((i) => {
+        const [text, ...name] = i.split(/\s+/)
+        return { key: name.join(' ') || text, title: name.join(' ') || text, insert: text, snippet: false, text }
+      })
+    }))
+  return [...SYMBOL_GROUPS, ...extGroups.map((g) => ({ name: g.name, items: g.items.map((i): [string] => [i]) }))].map((g) => ({
     name: g.name,
     items: g.items.map(([cmd, tpl]) => ({
       key: cmd,
@@ -41,11 +54,16 @@ function groupsFor(lean: boolean): { name: string; items: Item[] }[] {
 }
 
 export default function SymbolsPanel(): React.JSX.Element {
-  const lean = useApp((s) => isLean(s.active))
+  // Langage du fichier actif (LaTeX s'il n'y en a pas, ou si son langage n'a pas de symboles propres)
+  useApp((s) => s.compilersVersion)
+  const active = useApp((s) => s.active)
+  const language = languageOf(active)
+  const lang = isLean(active) ? 'lean' : !active || !language || language.id === 'bibtex' ? 'latex' : language.id
+  const lean = lang === 'lean'
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<string | null>(null)
   const exts = useApp((s) => s.extensions)
-  const all = useMemo(() => groupsFor(lean), [lean, exts])
+  const all = useMemo(() => groupsFor(lang), [lang, exts])
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase().replace(/^\\/, '')
@@ -94,7 +112,9 @@ export default function SymbolsPanel(): React.JSX.Element {
             </div>
           </section>
         ))}
-        {!groups.length && <div className="panel-empty">Aucun symbole</div>}
+        {!groups.length && (
+          <div className="panel-empty">{all.length ? 'Aucun symbole' : `Pas de symboles pour les fichiers ${language?.name ?? ''}`}</div>
+        )}
       </div>
     </div>
   )

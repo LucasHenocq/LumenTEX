@@ -267,8 +267,8 @@ export interface ExtensionInfo {
   snippets: { prefix: string; body: string; description: string }[]
   /** Environnements proposés après \begin{ */
   environments: { name: string; body: string; description: string }[]
-  /** Groupes du panneau Σ : commandes LaTeX */
-  symbols: { name: string; items: string[] }[]
+  /** Groupes du panneau Σ. LaTeX : commandes (rendues par KaTeX) ; autre langage : « caractère nom » (inséré tel quel) */
+  symbols: { name: string; items: string[]; language: string }[]
   /** Modèles de projet ; {{titre}} et {{auteur}} remplacés à la création */
   templates: { name: string; description: string; files: TemplateFile[] }[]
   /** Thèmes de couleurs : variables CSS du thème clair et/ou sombre */
@@ -282,7 +282,7 @@ export interface ExtensionInfo {
   /** Réglages de l'extension : formulaire affiché par Lumen TeX */
   settings: ExtensionSetting[]
   /** Langages (fichiers reconnus, pouvant être compilés par un compilateur d'extension) */
-  languages: { id: string; name: string; extensions: string[] }[]
+  languages: { id: string; name: string; extensions: string[]; icon: string }[]
   /** Icône SVG (data URL), vide = pièce de puzzle */
   icon: string
   /** verified : du catalogue et inchangée ; modified : changée depuis son installation ; unverified : depuis un dossier */

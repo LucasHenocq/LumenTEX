@@ -135,7 +135,8 @@ export function readExtension(folder: string): ExtensionInfo {
       .map(obj)
       .map((g) => ({
         name: str(g.name, 100),
-        items: (typeof g.items === 'string' ? g.items.trim().split(/\s+/) : arr(g.items).map((i) => str(i, 200))).filter(Boolean)
+        items: (typeof g.items === 'string' ? g.items.trim().split(/\s+/) : arr(g.items).map((i) => str(i, 200).trim())).filter(Boolean),
+        language: str(g.language, 40) || 'latex'
       }))
       .filter((g) => g.name && g.items.length),
     templates: arr(m.templates)
@@ -185,19 +186,22 @@ export function readExtension(folder: string): ExtensionInfo {
         name: str(l.name, 100) || str(l.id, 40),
         extensions: arr(l.extensions)
           .map((e) => str(e, 20).toLowerCase())
-          .filter((e) => /^\.[a-z0-9]+$/.test(e))
+          .filter((e) => /^\.[a-z0-9]+$/.test(e)),
+        // Icône des fichiers de ce langage (arbre des fichiers, onglets)
+        icon: svgData(str(l.icon), inside)
       }))
       .filter((l) => /^[a-z0-9-]+$/.test(l.id) && l.extensions.length),
-    // Icône SVG en data URL : affichée comme image, elle ne peut pas exécuter de script
-    icon: (() => {
-      const rel = str(m.icon)
-      if (!rel || !/\.svg$/i.test(rel)) return ''
-      const file = inside(rel)
-      return fs.existsSync(file) && fs.statSync(file).size < 100_000 ? 'data:image/svg+xml;base64,' + fs.readFileSync(file).toString('base64') : ''
-    })(),
+    icon: svgData(str(m.icon), inside),
     trust: 'unverified',
     linked: ''
   }
+}
+
+/** Icône SVG en data URL : affichée comme image, elle ne peut pas exécuter de script */
+function svgData(rel: string, inside: (rel: string) => string): string {
+  if (!rel || !/\.svg$/i.test(rel)) return ''
+  const file = inside(rel)
+  return fs.existsSync(file) && fs.statSync(file).size < 100_000 ? 'data:image/svg+xml;base64,' + fs.readFileSync(file).toString('base64') : ''
 }
 
 /** Fichier de code déclaré dans le manifeste (module JavaScript), qui doit exister dans l'extension */
@@ -258,6 +262,11 @@ function listIn(root: string): { ext: ExtensionInfo; folder: string }[] {
     .readdirSync(root, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .flatMap((d) => {
+      // Restes d'un remplacement interrompu : effacés
+      if (SWAP.test(d.name)) {
+        fs.rmSync(path.join(root, d.name), { recursive: true, force: true })
+        return []
+      }
       try {
         const folder = realFolder(path.join(root, d.name))
         return [{ ext: readExtension(folder), folder }]
@@ -286,12 +295,41 @@ export function installedExtensions(): ExtensionInfo[] {
 /** Extension installée et son dossier (code, fichiers servis à la fenêtre) */
 export const installedExtension = (id: string): { ext: ExtensionInfo; folder: string } | undefined => installed.get(id)
 
+// Dossiers temporaires d'un remplacement (ignorés dans la liste, effacés au lancement suivant s'ils restent)
+const SWAP = /\.(nouveau|ancien)-\d+$/
+
+/**
+ * Remplace le dossier d'une extension sans jamais la laisser à moitié effacée : la nouvelle version est préparée à
+ * côté, l'ancienne mise de côté par un renommage (qui échoue d'un bloc si un fichier est utilisé), puis effacée.
+ */
+function replaceFolder(dest: string, fill: (tmp: string) => void): void {
+  const tmp = `${dest}.nouveau-${Date.now()}`
+  try {
+    fill(tmp)
+  } catch (e) {
+    fs.rmSync(tmp, { recursive: true, force: true })
+    throw e
+  }
+  const old = `${dest}.ancien-${Date.now()}`
+  if (fs.existsSync(dest)) {
+    try {
+      fs.renameSync(dest, old)
+    } catch {
+      fs.rmSync(tmp, { recursive: true, force: true })
+      throw new Error('Cette extension est en cours d’utilisation. Fermez puis rouvrez Lumen TeX, et réessayez.')
+    }
+  }
+  fs.renameSync(tmp, dest)
+  fs.rmSync(old, { recursive: true, force: true })
+}
+
 /** Copie une extension dans le dossier des extensions (remplace l'ancienne version) ; du catalogue : notée vérifiée */
 function install(folder: string, verified: boolean): ExtensionInfo {
   const ext = readExtension(folder)
   const dest = path.join(extDir(), ext.id)
-  fs.rmSync(dest, { recursive: true, force: true })
-  fs.cpSync(folder, dest, { recursive: true, filter: (src) => path.basename(src) !== '.git' && !fs.lstatSync(src).isSymbolicLink() })
+  replaceFolder(dest, (tmp) =>
+    fs.cpSync(folder, tmp, { recursive: true, filter: (src) => path.basename(src) !== '.git' && !fs.lstatSync(src).isSymbolicLink() })
+  )
   setVerified(ext.id, verified ? hashFolder(dest) : null)
   return ext
 }
@@ -301,17 +339,25 @@ export const installExtensionFolder = (folder: string): ExtensionInfo => install
 /** Mode développeur : extension reliée à son dossier, sans copie (ses modifications sont prises au rechargement) */
 export function linkExtensionFolder(folder: string): ExtensionInfo {
   const ext = readExtension(folder)
-  const dest = path.join(extDir(), ext.id)
-  fs.rmSync(dest, { recursive: true, force: true })
-  fs.mkdirSync(dest, { recursive: true })
-  fs.writeFileSync(path.join(dest, '.lumen-link'), path.resolve(folder))
+  replaceFolder(path.join(extDir(), ext.id), (tmp) => {
+    fs.mkdirSync(tmp, { recursive: true })
+    fs.writeFileSync(path.join(tmp, '.lumen-link'), path.resolve(folder))
+  })
   setVerified(ext.id, null)
   return ext
 }
 
 export function uninstallExtension(id: string): void {
   if (!ID.test(id)) return
-  fs.rmSync(path.join(extDir(), id), { recursive: true, force: true })
+  const dest = path.join(extDir(), id)
+  // Renommée d'abord : si un fichier est utilisé, rien n'est effacé
+  const old = `${dest}.ancien-${Date.now()}`
+  try {
+    if (fs.existsSync(dest)) fs.renameSync(dest, old)
+  } catch {
+    throw new Error('Cette extension est en cours d’utilisation. Fermez puis rouvrez Lumen TeX, et réessayez.')
+  }
+  fs.rmSync(old, { recursive: true, force: true })
   setVerified(id, null)
 }
 
