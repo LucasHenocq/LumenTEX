@@ -4,6 +4,7 @@ import SearchPanel from './panels/SearchPanel'
 import SymbolsPanel from './panels/SymbolsPanel'
 import Copilot from './Copilot'
 import ChatPanel from './panels/ChatPanel'
+import ExtensionsPanel from './panels/ExtensionsPanel'
 import { useApp } from '../store'
 
 export default function Sidebar(): React.JSX.Element {
@@ -18,6 +19,7 @@ export default function Sidebar(): React.JSX.Element {
       {panel === 'symbols' && <SymbolsPanel />}
       {panel === 'search' && <SearchPanel />}
       {panel === 'chat' && <ChatPanel />}
+      {panel === 'extensions' && <ExtensionsPanel />}
       <Copilot />
     </div>
   )

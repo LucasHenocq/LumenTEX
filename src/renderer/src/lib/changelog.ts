@@ -6,6 +6,14 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.4.1',
+    date: '2026-10-14',
+    items: [
+      'Les extensions ont leur onglet dans la barre de gauche (icône de pièce de puzzle).',
+      'La barre latérale (fichiers, assistant IA) prend bien les couleurs du thème choisi. Elle avait gardé un fond gris venu de l’aperçu PDF, aussi avec le thème de base.'
+    ]
+  },
+  {
     version: '1.4.0',
     date: '2026-10-14',
     items: [

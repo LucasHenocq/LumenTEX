@@ -844,7 +844,8 @@ select.input {
   flex: 1;
 }
 
-.sidebar {
+/* « app- » : pdf.js a sa propre classe .sidebar (fond, bordure, largeur minimale) */
+.app-sidebar {
   flex: none;
   background: var(--panel);
   min-width: 0;
@@ -3108,6 +3109,18 @@ button.settings-version:hover {
 }
 .ext-folder {
   margin-top: 4px;
+}
+/* Barre latérale : boutons sous le texte */
+.ext-panel {
+  padding: 0 12px 20px;
+}
+.ext-panel .settings-subtitle {
+  margin: 6px 0 8px;
+}
+.ext-panel .ext-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
 }
 .settings-update {
   display: flex;

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { LeanStep } from './lib/leanSteps'
 import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, ExtensionInfo, FileEntry, LeanDiag, LeanProgress, LeanStatus, Settings, TectonicStatus, UserRight } from '../../shared/types'
 
-export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat'
+export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat' | 'extensions'
 
 export type Modal =
   | { type: 'new-project' }

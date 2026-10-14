@@ -63,7 +63,7 @@ export default function Workspace(): React.JSX.Element {
         <ActivityBar />
         {settings.sidebarVisible && (
           <>
-            <div className="sidebar" style={{ width: sidebarWidth }}>
+            <div className="app-sidebar" style={{ width: sidebarWidth }}>
               <Sidebar />
             </div>
             <Splitter
