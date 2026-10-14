@@ -1,7 +1,8 @@
 import { FolderOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { TEMPLATES } from '../../latex/templates'
+import { TEMPLATES, type Template } from '../../latex/templates'
 import { createProject } from '../../lib/actions'
+import { extensions } from '../../lib/extensions'
 import { ModalFrame, closeModal } from '../Modals'
 
 function slug(s: string): string {
@@ -79,7 +80,23 @@ function TemplateThumb({ id, accent }: { id: string; accent: string }): React.JS
   )
 }
 
+/** Modèles de Lumen TeX, puis ceux des extensions ({{titre}} et {{auteur}} remplacés) */
+const allTemplates = (): Template[] => [
+  ...TEMPLATES,
+  ...extensions().flatMap((e) =>
+    e.templates.map((t, i) => ({
+      id: `ext:${e.id}:${i}`,
+      name: t.name,
+      description: t.description || e.name,
+      accent: '#8b8d98',
+      files: (title: string, author: string) =>
+        t.files.map((f) => (f.base64 ? f : { ...f, content: f.content.replaceAll('{{titre}}', title).replaceAll('{{auteur}}', author) }))
+    }))
+  )
+]
+
 export default function NewProjectModal(): React.JSX.Element {
+  const [templates] = useState(allTemplates)
   const [template, setTemplate] = useState('article')
   const [name, setName] = useState('Mon document')
   const [author, setAuthor] = useState(() => localStorage.getItem('lumen.author') ?? '')
@@ -95,7 +112,7 @@ export default function NewProjectModal(): React.JSX.Element {
   const dir = `${location}/${slug(name)}`
 
   const create = async (): Promise<void> => {
-    const t = TEMPLATES.find((t) => t.id === template)!
+    const t = templates.find((t) => t.id === template)!
     setBusy(true)
     localStorage.setItem('lumen.author', author)
     localStorage.setItem('lumen.projectsDir', location)
@@ -123,7 +140,7 @@ export default function NewProjectModal(): React.JSX.Element {
       }
     >
       <div className="template-grid">
-        {TEMPLATES.map((t) => (
+        {templates.map((t) => (
           <button
             key={t.id}
             className={`template${template === t.id ? ' selected' : ''}`}

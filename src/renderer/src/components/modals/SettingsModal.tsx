@@ -1,16 +1,18 @@
 import { FolderOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { AiEngine, AiStatus, Settings, UpdateCheck } from '../../../../shared/types'
+import type { AiEngine, AiStatus, ExtensionInfo, Settings, UpdateCheck } from '../../../../shared/types'
 import { emit } from '../../lib/bus'
 import { store, toast, updateSettings, useApp } from '../../store'
-import { ENGINES } from '../Copilot'
+import { cleanError, ENGINES } from '../Copilot'
+import { compareVersions } from '../../lib/changelog'
+import { applyColorTheme, loadExtensions, themeKey } from '../../lib/extensions'
 import TectonicSetup from '../TectonicSetup'
 import LeanSetup from '../LeanSetup'
 import { closeModal, ModalFrame } from '../Modals'
 import { kb } from '../../lib/keys'
 import { compile, installUpdate } from '../../lib/actions'
 
-type Section = 'appearance' | 'editor' | 'compile' | 'pdf' | 'lean' | 'ai'
+type Section = 'appearance' | 'editor' | 'compile' | 'pdf' | 'lean' | 'ai' | 'extensions'
 
 function statusText(engine: AiEngine, s: AiStatus | undefined): string {
   if (!s) return 'Vérification…'
@@ -113,6 +115,145 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
   )
 }
 
+/** Ce qu'apporte une extension, en quelques mots */
+function contents(e: ExtensionInfo): string {
+  const n = (count: number, one: string, many: string): string | null => (count ? `${count} ${count > 1 ? many : one}` : null)
+  return [
+    n(e.snippets.length, 'bout de LaTeX', 'bouts de LaTeX'),
+    n(e.environments.length, 'environnement', 'environnements'),
+    n(
+      e.symbols.reduce((k, g) => k + g.items.length, 0),
+      'symbole',
+      'symboles'
+    ),
+    n(e.templates.length, 'modèle de projet', 'modèles de projet'),
+    n(e.themes.length, 'thème de couleurs', 'thèmes de couleurs')
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function ExtensionCard({ e, children }: { e: ExtensionInfo; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="ext-card">
+      <div className="ext-main">
+        <div className="ext-title">
+          <strong>{e.name}</strong> <span>{e.version}</span>
+          {e.author && <span>{' · '}{e.author}</span>}
+        </div>
+        {e.description && <div className="ext-desc">{e.description}</div>}
+        <div className="ext-contents">{e.compatible ? contents(e) : `Nécessite Lumen TeX ${e.lumen} ou plus récent`}</div>
+      </div>
+      <div className="ext-actions">{children}</div>
+    </div>
+  )
+}
+
+/** Extensions installées, catalogue officiel (dépôt GitHub LumenTEX-extensions), installation depuis un dossier */
+function ExtensionsSection(): React.JSX.Element {
+  const installed = useApp((st) => st.extensions)
+  const colorTheme = useApp((st) => st.settings.colorTheme)
+  const [catalog, setCatalog] = useState<ExtensionInfo[] | null | undefined>(undefined)
+  const [busy, setBusy] = useState('')
+
+  const fetchCatalog = (): void => {
+    setCatalog(undefined)
+    void window.api.extCatalog().then(setCatalog)
+  }
+  useEffect(fetchCatalog, [])
+
+  /** action : message de réussite, ou null (annulée) */
+  const run = async (id: string, action: () => Promise<string | null>): Promise<void> => {
+    setBusy(id)
+    try {
+      const done = await action()
+      await loadExtensions()
+      applyColorTheme(store.get().settings.colorTheme)
+      if (done) toast(done, 'success')
+    } catch (e) {
+      toast(cleanError(e), 'error', undefined, 6000)
+    }
+    setBusy('')
+  }
+  const install = (e: ExtensionInfo, update = false): Promise<void> =>
+    run(e.id, async () => {
+      await window.api.extInstall(e.id)
+      return update ? `L’extension « ${e.name} » est à jour (${e.version})` : `L’extension « ${e.name} » est installée`
+    })
+  const uninstall = (e: ExtensionInfo): Promise<void> =>
+    run(e.id, async () => {
+      await window.api.extUninstall(e.id)
+      if (colorTheme.startsWith(e.id + '/')) await updateSettings({ colorTheme: '' })
+      return `L’extension « ${e.name} » est désinstallée`
+    })
+  const fromFolder = (): Promise<void> =>
+    run('folder', async () => {
+      const e = await window.api.extInstallFolder()
+      return e && `L’extension « ${e.name} » est installée`
+    })
+
+  const available = catalog?.filter((c) => !installed.some((i) => i.id === c.id)) ?? []
+  const newer = (e: ExtensionInfo): ExtensionInfo | undefined => catalog?.find((c) => c.id === e.id && compareVersions(c.version, e.version) > 0)
+
+  return (
+    <>
+      <div className="settings-subtitle">Installées</div>
+      {installed.length ? (
+        installed.map((e) => {
+          const update = newer(e)
+          return (
+            <ExtensionCard key={e.id} e={e}>
+              {update && (
+                <button className="btn small primary" disabled={!!busy || !update.compatible} onClick={() => void install(update, true)}>
+                  Mettre à jour ({update.version})
+                </button>
+              )}
+              <button className="btn small" disabled={!!busy} onClick={() => void uninstall(e)}>
+                Désinstaller
+              </button>
+            </ExtensionCard>
+          )
+        })
+      ) : (
+        <div className="ext-empty">Aucune extension installée.</div>
+      )}
+      <button className="btn small ext-folder" disabled={!!busy} onClick={() => void fromFolder()}>
+        <FolderOpen size={13} /> Installer depuis un dossier…
+      </button>
+
+      <div className="settings-subtitle">Catalogue</div>
+      {catalog === undefined ? (
+        <div className="ext-empty">Chargement du catalogue…</div>
+      ) : catalog === null ? (
+        <div className="ext-empty">
+          Impossible de joindre le catalogue. Vérifiez votre connexion à Internet.{' '}
+          <button className="btn small" onClick={fetchCatalog}>
+            Réessayer
+          </button>
+        </div>
+      ) : available.length ? (
+        available.map((e) => (
+          <ExtensionCard key={e.id} e={e}>
+            <button className="btn small primary" disabled={!!busy || !e.compatible} onClick={() => void install(e)}>
+              {busy === e.id ? 'Installation…' : 'Installer'}
+            </button>
+          </ExtensionCard>
+        ))
+      ) : (
+        <div className="ext-empty">{catalog.length ? 'Toutes les extensions du catalogue sont installées.' : 'Aucune extension dans le catalogue pour le moment.'}</div>
+      )}
+      <div className="settings-note">
+        Les extensions ajoutent des bouts de LaTeX à l’autocomplétion, des environnements, des symboles au panneau Σ, des modèles de
+        projet et des thèmes de couleurs. Elles ne contiennent pas de code. Pour en créer une ou proposer la vôtre au catalogue, voyez{' '}
+        <a href="https://github.com/LucasHenocq/LumenTEX-extensions" target="_blank" rel="noreferrer">
+          LumenTEX-extensions
+        </a>{' '}
+        sur GitHub.
+      </div>
+    </>
+  )
+}
+
 /** Bouton « Rechercher une mise à jour », sous le numéro de version */
 function UpdateButton(): React.JSX.Element {
   const progress = useApp((st) => st.updateProgress)
@@ -161,6 +302,9 @@ export default function SettingsModal(): React.JSX.Element {
   const tectonic = useApp((st) => st.tectonic)
   const lean = useApp((st) => st.lean.status)
   const [section, setSection] = useState<Section>('appearance')
+  const themes = useApp((st) => st.extensions)
+    .filter((e) => e.compatible)
+    .flatMap((e) => e.themes.map((t) => ({ key: themeKey(e, t.name), name: t.name })))
   const set = (patch: Partial<Settings>): void => void updateSettings(patch)
 
   const recheck = async (): Promise<void> => {
@@ -180,7 +324,8 @@ export default function SettingsModal(): React.JSX.Element {
               ['compile', 'Compilation'],
               ['pdf', 'Aperçu PDF'],
               ['lean', 'Lean'],
-              ['ai', 'IA']
+              ['ai', 'IA'],
+              ['extensions', 'Extensions']
             ] as [Section, string][]
           ).map(([id, label]) => (
             <button key={id} className={section === id ? 'on' : ''} onClick={() => setSection(id)}>
@@ -210,6 +355,18 @@ export default function SettingsModal(): React.JSX.Element {
                   ))}
                 </div>
               </Row>
+              {themes.length > 0 && (
+                <Row label="Couleurs" hint="Thèmes ajoutés par les extensions">
+                  <select className="input" value={s.colorTheme} onChange={(e) => set({ colorTheme: e.target.value })}>
+                    <option value="">Lumen TeX</option>
+                    {themes.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </Row>
+              )}
               <Row label="Taille du texte" hint={kb('Aussi avec ⌘= et ⌘−')}>
                 <div className="number-control">
                   <button className="btn small" onClick={() => set({ editorFontSize: Math.max(9, s.editorFontSize - 1) })}>
@@ -311,6 +468,7 @@ export default function SettingsModal(): React.JSX.Element {
               </Row>
             </>
           )}
+          {section === 'extensions' && <ExtensionsSection />}
           {section === 'lean' && (
             <>
               <div className="settings-subtitle">Vérification des preuves</div>

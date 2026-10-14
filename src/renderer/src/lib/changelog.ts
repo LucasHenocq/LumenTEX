@@ -6,6 +6,15 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.4.0',
+    date: '2026-10-14',
+    items: [
+      'Extensions : Réglages → Extensions présente le catalogue officiel. Une extension s’installe en un clic et ajoute des bouts de LaTeX à l’autocomplétion, des environnements, des symboles au panneau Σ, des modèles de projet ou des thèmes de couleurs.',
+      'Premières extensions : « TikZ et pgfplots » (figures, repères, courbes, graphes de fonctions) et « Thèmes Nord et Solarized ». Le thème se choisit dans Réglages → Apparence.',
+      'Une extension se met à jour depuis Réglages → Extensions quand une nouvelle version est publiée. Elle peut aussi s’installer depuis un dossier, pour essayer la sienne avant de la proposer au catalogue.'
+    ]
+  },
+  {
     version: '1.3.4',
     date: '2026-10-14',
     items: [

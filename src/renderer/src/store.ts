@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { LeanStep } from './lib/leanSteps'
-import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, FileEntry, LeanDiag, LeanProgress, LeanStatus, Settings, TectonicStatus, UserRight } from '../../shared/types'
+import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, ExtensionInfo, FileEntry, LeanDiag, LeanProgress, LeanStatus, Settings, TectonicStatus, UserRight } from '../../shared/types'
 
 export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat'
 
@@ -119,6 +119,8 @@ export interface AppState {
   updateProgress: number | null
   lean: LeanState
   proofRun: ProofRun | null
+  /** Extensions installées (sans code) */
+  extensions: ExtensionInfo[]
 }
 
 type Listener = () => void
@@ -180,6 +182,7 @@ export const store = createStore<AppState>({
   updateProgress: null,
   lean: { status: { ready: false }, install: null, diags: {}, busy: {}, goals: null },
   proofRun: null,
+  extensions: [],
   collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [], rules: NO_RULES }
 })
 

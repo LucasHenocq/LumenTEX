@@ -9,6 +9,7 @@ import Welcome from './Welcome'
 import Workspace from './Workspace'
 import { checkWhatsNew } from '../lib/changelog'
 import { initLean } from '../lib/lean'
+import { applyColorTheme, loadExtensions } from '../lib/extensions'
 // Coches des preuves (crochets de l'éditeur)
 import '../lib/proofs'
 
@@ -22,6 +23,7 @@ function applyTheme(): void {
   const root = document.documentElement.style
   root.setProperty('--editor-font-size', `${settings.editorFontSize}px`)
   root.setProperty('--editor-font', settings.editorFontFamily)
+  applyColorTheme(settings.colorTheme)
   store.set({ resolvedDark: dark })
 }
 
@@ -58,7 +60,7 @@ export default function App(): React.JSX.Element {
     media.addEventListener('change', onMedia)
 
     void (async () => {
-      const [settings, tectonic, leanStatus] = await Promise.all([api.getSettings(), api.tectonicStatus(), api.leanStatus()])
+      const [settings, tectonic, leanStatus] = await Promise.all([api.getSettings(), api.tectonicStatus(), api.leanStatus(), loadExtensions()])
       store.set((s) => ({ settings, tectonic, lean: { ...s.lean, status: leanStatus } }))
       applyTheme()
       store.set({ ready: true })

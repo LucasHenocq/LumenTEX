@@ -15,7 +15,7 @@ export interface MacUpdate {
 }
 
 /** a plus récente que b (versions « x.y.z ») */
-function isNewer(a: string, b: string): boolean {
+export function isNewer(a: string, b: string): boolean {
   const x = a.split('.').map(Number)
   const y = b.split('.').map(Number)
   for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0)

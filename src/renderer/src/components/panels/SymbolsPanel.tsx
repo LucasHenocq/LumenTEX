@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { ABBREV, LEAN_SYMBOL_GROUPS } from '../../editor/lean'
 import { SYMBOL_GROUPS } from '../../latex/symbols'
 import { insertText } from '../../lib/actions'
+import { extensions } from '../../lib/extensions'
 import { isLean } from '../../lib/lean'
 import { useApp } from '../../store'
 
@@ -27,7 +28,7 @@ function groupsFor(lean: boolean): { name: string; items: Item[] }[] {
       name: g.name,
       items: g.items.map((a) => ({ key: a, title: `\\${a}`, insert: ABBREV[a], snippet: false, text: ABBREV[a] }))
     }))
-  return SYMBOL_GROUPS.map((g) => ({
+  return [...SYMBOL_GROUPS, ...extensions().flatMap((e) => e.symbols.map((g) => ({ name: g.name, items: g.items.map((i): [string] => [i]) })))].map((g) => ({
     name: g.name,
     items: g.items.map(([cmd, tpl]) => ({
       key: cmd,
@@ -43,7 +44,8 @@ export default function SymbolsPanel(): React.JSX.Element {
   const lean = useApp((s) => isLean(s.active))
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<string | null>(null)
-  const all = useMemo(() => groupsFor(lean), [lean])
+  const exts = useApp((s) => s.extensions)
+  const all = useMemo(() => groupsFor(lean), [lean, exts])
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase().replace(/^\\/, '')

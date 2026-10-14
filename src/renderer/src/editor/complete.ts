@@ -7,6 +7,7 @@ import {
 } from '@codemirror/autocomplete'
 import type { EditorView } from '@codemirror/view'
 import { CLASSES, COMMANDS, ENVIRONMENTS, PACKAGES } from '../latex/data'
+import { extensions } from '../lib/extensions'
 import { index } from '../lib/projectIndex'
 import { store } from '../store'
 
@@ -84,6 +85,12 @@ function environmentSource(ctx: CompletionContext): CompletionResult | null {
     type: 'class',
     apply: withClosingBrace(`${env}}${arg ?? ''}\n\t${body}\n\\end{${env}}`)
   }))
+  for (const ext of extensions())
+    for (const e of ext.environments) {
+      if (known.has(e.name)) continue
+      known.add(e.name)
+      options.push({ label: e.name, info: e.description, detail: ext.name, type: 'class', apply: withClosingBrace(`${e.name}}\n\t${e.body}\n\\end{${e.name}}`) })
+    }
   for (const env of index.envs) {
     if (known.has(env)) continue
     options.push({ label: env, detail: 'projet', type: 'class', boost: 1, apply: withClosingBrace(`${env}}\n\t\${}\n\\end{${env}}`) })
@@ -217,4 +224,16 @@ function packageSource(ctx: CompletionContext): CompletionResult | null {
   return null
 }
 
-export const latexCompletionSources = [environmentSource, endSource, refSource, citeSource, fileSource, packageSource, commandSource]
+/** Bouts de LaTeX des extensions : proposés dès que le mot tapé commence leur préfixe */
+function extensionSource(ctx: CompletionContext): CompletionResult | null {
+  const word = ctx.matchBefore(/\\?[\w@:-]+/)
+  if (!word || (word.text.length < 2 && !ctx.explicit)) return null
+  const options = extensions().flatMap((ext) =>
+    ext.snippets
+      .filter((s) => s.prefix.startsWith(word.text))
+      .map((s) => snippetCompletion(s.body, { label: s.prefix, info: s.description, detail: ext.name, type: 'text', boost: 1 }))
+  )
+  return options.length ? { from: word.from, options } : null
+}
+
+export const latexCompletionSources = [environmentSource, endSource, refSource, citeSource, fileSource, packageSource, commandSource, extensionSource]

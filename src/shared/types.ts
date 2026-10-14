@@ -33,6 +33,8 @@ export interface RecentProject {
 
 export interface Settings {
   theme: ThemeMode
+  /** Thème de couleurs d'une extension (« id/nom »), vide = celui de Lumen TeX */
+  colorTheme: string
   editorFontSize: number
   editorFontFamily: string
   lineWrapping: boolean
@@ -232,6 +234,30 @@ export interface ContextMenuItem {
 export interface TemplateFile {
   path: string
   content: string
+  /** Fichier binaire (image d'un modèle d'extension) : content en base64 */
+  base64?: boolean
+}
+
+/** Extension (sans code), telle que l'app l'utilise : manifeste lumen-extension.json lu et vérifié */
+export interface ExtensionInfo {
+  id: string
+  name: string
+  version: string
+  author: string
+  description: string
+  /** Version de Lumen TeX nécessaire ; compatible = false si celle-ci est plus ancienne (extension ignorée) */
+  lumen: string
+  compatible: boolean
+  /** Bouts de LaTeX proposés par l'autocomplétion (gabarit au format CodeMirror) */
+  snippets: { prefix: string; body: string; description: string }[]
+  /** Environnements proposés après \begin{ */
+  environments: { name: string; body: string; description: string }[]
+  /** Groupes du panneau Σ : commandes LaTeX */
+  symbols: { name: string; items: string[] }[]
+  /** Modèles de projet ; {{titre}} et {{auteur}} remplacés à la création */
+  templates: { name: string; description: string; files: TemplateFile[] }[]
+  /** Thèmes de couleurs : variables CSS du thème clair et/ou sombre */
+  themes: { name: string; light: Record<string, string>; dark: Record<string, string> }[]
 }
 
 export interface SearchMatch {

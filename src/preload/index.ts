@@ -6,6 +6,7 @@ import type {
   ConvertEvent,
   ConvertOptions,
   ConvertSource,
+  ExtensionInfo,
   CompileResult,
   ContextMenuItem,
   FileEntry,
@@ -53,6 +54,12 @@ const api = {
   installMacUpdate: (): Promise<void> => invoke('app:install-mac-update'),
   installUpdate: (): Promise<void> => invoke('app:install-update'),
   checkUpdate: (): Promise<UpdateCheck> => invoke('app:check-update'),
+  extList: (): Promise<ExtensionInfo[]> => invoke('ext:list'),
+  /** Catalogue officiel ; null si GitHub est injoignable */
+  extCatalog: (): Promise<ExtensionInfo[] | null> => invoke('ext:catalog'),
+  extInstall: (id: string): Promise<ExtensionInfo> => invoke('ext:install', id),
+  extInstallFolder: (): Promise<ExtensionInfo | null> => invoke('ext:install-folder'),
+  extUninstall: (id: string): Promise<void> => invoke('ext:uninstall', id),
   focusWindow: (): void => ipcRenderer.send('app:focus'),
   pendingOpen: (): Promise<string | null> => invoke('app:pending-open'),
 

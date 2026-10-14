@@ -27,6 +27,7 @@ import { askOllama, ollamaStatus, pullOllamaModel, startOllama, stopOllama } fro
 import { buildDocs, docsStatus, userDocsDir } from './docs'
 import { dropGuestDirs, guestDir, isGuestDir, keepGuestCopy } from './collab'
 import { checkMacUpdate, installMacUpdate, type MacUpdate } from './macUpdate'
+import { cleanCatalog, fetchCatalog, installedExtensions, installExtensionFolder, installFromCatalog, uninstallExtension } from './extensions'
 import { collabStatus, newCode, normalizeCode, sendCollab, startCollab, stopCollab } from './collab'
 import { discard, discardAll, prepareData, prepareFile, runConvert, stopConvert } from './convert'
 
@@ -418,6 +419,15 @@ function registerIpc(): void {
     })
     return r.canceled ? null : r.filePaths[0]
   })
+  // --- Extensions (sans code) ---
+  ipcMain.handle('ext:list', () => installedExtensions())
+  ipcMain.handle('ext:catalog', () => fetchCatalog().catch(() => null))
+  ipcMain.handle('ext:install', (_e, id: string) => installFromCatalog(id))
+  ipcMain.handle('ext:uninstall', (_e, id: string) => uninstallExtension(id))
+  ipcMain.handle('ext:install-folder', async () => {
+    const r = await dialog.showOpenDialog(win!, { title: 'Dossier de l’extension (avec lumen-extension.json)', properties: ['openDirectory'] })
+    return r.canceled ? null : installExtensionFolder(r.filePaths[0])
+  })
   ipcMain.handle('dialog:confirm', async (_e, message: string, detail?: string, okLabel = 'Confirmer', cancelLabel = 'Annuler') => {
     const r = await dialog.showMessageBox(win!, {
       type: 'question',
@@ -590,7 +600,7 @@ function registerIpc(): void {
     for (const f of files) {
       const abs = inside(dir, f.path)
       fs.mkdirSync(path.dirname(abs), { recursive: true })
-      fs.writeFileSync(abs, f.content, 'utf8')
+      fs.writeFileSync(abs, f.base64 ? Buffer.from(f.content, 'base64') : f.content, f.base64 ? undefined : 'utf8')
     }
     return dir
   })
@@ -922,6 +932,7 @@ function forgetGuestSettings(): void {
 app.on('will-quit', () => {
   dropGuestDirs()
   stopLeanServer()
+  cleanCatalog()
 })
 void app.whenReady().then(() => {
   dropGuestDirs()
