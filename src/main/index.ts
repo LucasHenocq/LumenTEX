@@ -13,7 +13,7 @@ import { autoUpdater } from 'electron-updater'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import type { AiEngine, ContextMenuItem, ConvertOptions, FileEntry, SearchMatch, Settings, TemplateFile } from '../shared/types'
+import type { AiEngine, ContextMenuItem, ConvertOptions, FileEntry, SearchMatch, Settings, TemplateFile, UpdateCheck } from '../shared/types'
 import { BUILD_DIR, buildPaths, cancelCompile, compile } from './compiler'
 import { addRecent, flushSettings, getSettings, setSettings } from './store'
 import { forwardSearch, reverseSearch } from './synctex'
@@ -830,15 +830,25 @@ void app.whenReady().then(() => {
   if (app.isPackaged && process.platform === 'darwin') {
     // macOS : pas d'installation automatique sans signature Apple ; annonce, puis .dmg ouvert sur demande
     let pending: MacUpdate | null = null
-    const check = async (): Promise<void> => {
+    const check = async (): Promise<MacUpdate | null> => {
       const u = await checkMacUpdate()
-      if (!u || u.version === pending?.version) return
-      pending = u
-      send('app:update-available', u.version)
+      if (u && u.version !== pending?.version) {
+        pending = u
+        send('app:update-available', u.version)
+      }
+      return u
     }
-    void check()
-    setInterval(() => void check(), updateEvery)
+    void check().catch(() => {})
+    setInterval(() => void check().catch(() => {}), updateEvery)
     ipcMain.handle('app:install-mac-update', () => pending && installMacUpdate(pending, win, (p) => send('app:update-progress', p)))
+    // Bouton « Rechercher une mise à jour » des réglages
+    ipcMain.handle('app:check-update', async (): Promise<UpdateCheck> => {
+      try {
+        return { version: (await check())?.version }
+      } catch {
+        return { error: true }
+      }
+    })
   } else if (app.isPackaged) {
     // Une seule annonce par version téléchargée (les vérifications suivantes la retrouvent déjà prête)
     let announced = ''
@@ -853,6 +863,24 @@ void app.whenReady().then(() => {
     check()
     // App laissée ouverte plusieurs jours : nouvelle vérification toutes les 4 heures (LUMEN_UPDATE_EVERY_MS : tests)
     setInterval(check, updateEvery)
+    // Bouton « Rechercher une mise à jour » des réglages : attend la fin du téléchargement, dont il montre l'avancement
+    let manual = false
+    autoUpdater.on('download-progress', (p) => manual && send('app:update-progress', Math.round(p.percent)))
+    ipcMain.handle('app:check-update', async (): Promise<UpdateCheck> => {
+      manual = true
+      try {
+        const r = await autoUpdater.checkForUpdates()
+        if (!r?.isUpdateAvailable) return {}
+        await r.downloadPromise
+        return { version: r.updateInfo.version }
+      } catch {
+        return { error: true }
+      } finally {
+        manual = false
+      }
+    })
+  } else {
+    ipcMain.handle('app:check-update', (): UpdateCheck => ({ dev: true }))
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

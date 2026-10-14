@@ -18,7 +18,8 @@ import type {
   SyncForwardResult,
   SyncReverseResult,
   TectonicStatus,
-  TemplateFile
+  TemplateFile,
+  UpdateCheck
 } from '../shared/types'
 
 const invoke = ipcRenderer.invoke.bind(ipcRenderer)
@@ -51,6 +52,7 @@ const api = {
   onUpdateProgress: (cb: (percent: number) => void) => on<[number]>('app:update-progress', cb),
   installMacUpdate: (): Promise<void> => invoke('app:install-mac-update'),
   installUpdate: (): Promise<void> => invoke('app:install-update'),
+  checkUpdate: (): Promise<UpdateCheck> => invoke('app:check-update'),
   focusWindow: (): void => ipcRenderer.send('app:focus'),
   pendingOpen: (): Promise<string | null> => invoke('app:pending-open'),
 

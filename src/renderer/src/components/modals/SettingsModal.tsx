@@ -1,6 +1,6 @@
 import { FolderOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { AiEngine, AiStatus, Settings } from '../../../../shared/types'
+import type { AiEngine, AiStatus, Settings, UpdateCheck } from '../../../../shared/types'
 import { emit } from '../../lib/bus'
 import { store, toast, updateSettings, useApp } from '../../store'
 import { ENGINES } from '../Copilot'
@@ -8,7 +8,7 @@ import TectonicSetup from '../TectonicSetup'
 import LeanSetup from '../LeanSetup'
 import { closeModal, ModalFrame } from '../Modals'
 import { kb } from '../../lib/keys'
-import { compile } from '../../lib/actions'
+import { compile, installUpdate } from '../../lib/actions'
 
 type Section = 'appearance' | 'editor' | 'compile' | 'pdf' | 'lean' | 'ai'
 
@@ -113,6 +113,49 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
   )
 }
 
+/** Bouton « Rechercher une mise à jour », sous le numéro de version */
+function UpdateButton(): React.JSX.Element {
+  const progress = useApp((st) => st.updateProgress)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<UpdateCheck | null>(null)
+  const mac = window.api.platform === 'darwin'
+
+  const check = async (): Promise<void> => {
+    setBusy(true)
+    setResult(null)
+    const r = await window.api.checkUpdate()
+    // Windows, Linux : le téléchargement est fini ; macOS : le .dmg se télécharge au clic sur « Installer »
+    if (!mac) store.set({ updateProgress: null })
+    setResult(r)
+    setBusy(false)
+  }
+
+  if (busy)
+    return <div className="settings-update">{progress === null ? 'Recherche…' : `Téléchargement : ${progress} %`}</div>
+  if (result?.version)
+    return (
+      <div className="settings-update">
+        {mac ? `La version ${result.version} est disponible.` : `La version ${result.version} est prête.`}
+        <button className="btn small primary" onClick={installUpdate}>
+          {mac ? 'Installer' : 'Redémarrer'}
+        </button>
+      </div>
+    )
+  return (
+    <div className="settings-update">
+      {result &&
+        (result.dev
+          ? 'Pas de mises à jour dans la version de développement.'
+          : result.error
+            ? 'Impossible de joindre GitHub. Vérifiez votre connexion à Internet.'
+            : 'Vous avez la dernière version.')}
+      <button className="settings-version" onClick={() => void check()}>
+        {result ? 'Rechercher à nouveau' : 'Rechercher une mise à jour'}
+      </button>
+    </div>
+  )
+}
+
 export default function SettingsModal(): React.JSX.Element {
   const s = useApp((st) => st.settings)
   const tectonic = useApp((st) => st.tectonic)
@@ -147,6 +190,7 @@ export default function SettingsModal(): React.JSX.Element {
           <button className="settings-version" title="Voir les nouveautés de chaque version" onClick={() => store.set({ modal: { type: 'whats-new' } })}>
             Lumen TeX {__APP_VERSION__}
           </button>
+          <UpdateButton />
         </nav>
         <div className="settings-content">
           {section === 'appearance' && (

@@ -22,19 +22,16 @@ function isNewer(a: string, b: string): boolean {
   return false
 }
 
-/** Dernière release, si elle est plus récente et contient déjà le .dmg de ce Mac (ajouté quelques minutes après) */
+/** Dernière release, si elle est plus récente et contient déjà le .dmg de ce Mac (ajouté quelques minutes après) ;
+ *  rejette si GitHub est injoignable */
 export async function checkMacUpdate(): Promise<MacUpdate | null> {
-  try {
-    const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } })
-    if (!res.ok) return null
-    const r = (await res.json()) as { tag_name: string; html_url: string; assets: { name: string; browser_download_url: string }[] }
-    const version = r.tag_name.replace(/^v/, '')
-    const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
-    const dmg = r.assets.find((a) => a.name.endsWith(`-${arch}.dmg`))?.browser_download_url
-    return dmg && isNewer(version, app.getVersion()) ? { version, dmg, page: r.html_url } : null
-  } catch {
-    return null
-  }
+  const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const r = (await res.json()) as { tag_name: string; html_url: string; assets: { name: string; browser_download_url: string }[] }
+  const version = r.tag_name.replace(/^v/, '')
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
+  const dmg = r.assets.find((a) => a.name.endsWith(`-${arch}.dmg`))?.browser_download_url
+  return dmg && isNewer(version, app.getVersion()) ? { version, dmg, page: r.html_url } : null
 }
 
 /** Télécharge le .dmg dans Téléchargements, l'ouvre et propose de quitter ; en cas d'échec, ouvre la page de la release */

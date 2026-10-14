@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { applySettingsToEditor, handleFsChanged, openPath, openProject, saveAll } from '../lib/actions'
+import { applySettingsToEditor, handleFsChanged, installUpdate, openPath, openProject, saveAll } from '../lib/actions'
 import { runCommand } from '../lib/commands'
 import { store, toast, useApp } from '../store'
 import Modals from './Modals'
@@ -36,24 +36,9 @@ export default function App(): React.JSX.Element {
       api.onMenu((id) => runCommand(id)),
       api.onOpenPath((p) => void openPath(p)),
       // macOS : l'app télécharge le .dmg et l'ouvre (fenêtre « glisser dans Applications »)
-      api.onUpdateAvailable((version) =>
-        toast(
-          `Lumen TeX ${version} est disponible`,
-          'success',
-          {
-            label: 'Installer',
-            run: () => {
-              store.set({ updateProgress: 0 })
-              void api.installMacUpdate().finally(() => store.set({ updateProgress: null }))
-            }
-          },
-          120000
-        )
-      ),
+      api.onUpdateAvailable((version) => toast(`Lumen TeX ${version} est disponible`, 'success', { label: 'Installer', run: installUpdate }, 120000)),
       api.onUpdateProgress((p) => store.set({ updateProgress: p })),
-      api.onUpdateReady((version) =>
-        toast(`Lumen TeX ${version} est prêt à être installé`, 'success', { label: 'Redémarrer', run: () => void saveAll().then(() => api.installUpdate()) }, 120000)
-      ),
+      api.onUpdateReady((version) => toast(`Lumen TeX ${version} est prêt à être installé`, 'success', { label: 'Redémarrer', run: installUpdate }, 120000)),
       api.onFsChanged((paths) => void handleFsChanged(paths)),
       api.onCompileProgress((line) =>
         store.set({

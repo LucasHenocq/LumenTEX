@@ -174,6 +174,13 @@ export interface SyncReverseResult {
   line: number
 }
 
+/** Résultat du bouton « Rechercher une mise à jour » : version prête (ou disponible sur Mac), à jour ({}), échec, ou copie de développement */
+export interface UpdateCheck {
+  version?: string
+  error?: boolean
+  dev?: boolean
+}
+
 export interface TectonicStatus {
   found: boolean
   path?: string

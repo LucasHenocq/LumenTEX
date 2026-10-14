@@ -311,6 +311,16 @@ export async function saveAll(): Promise<void> {
   for (const p of [...docs.keys()]) if (isDirty(p)) await saveFile(p)
 }
 
+/** Installe la mise à jour trouvée : redémarrage (Windows, Linux) ou .dmg téléchargé puis ouvert (macOS) */
+export function installUpdate(): void {
+  if (api.platform !== 'darwin') {
+    void saveAll().then(() => api.installUpdate())
+    return
+  }
+  store.set({ updateProgress: 0 })
+  void api.installMacUpdate().finally(() => store.set({ updateProgress: null }))
+}
+
 const lastWrites = new Map<string, string>()
 
 /** Contenu identique au dernier écrit par l'app : écho de sa propre écriture sur le disque */

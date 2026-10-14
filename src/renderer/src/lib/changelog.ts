@@ -6,6 +6,13 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.3.4',
+    date: '2026-10-14',
+    items: [
+      'Réglages : « Rechercher une mise à jour », sous le numéro de version, vérifie tout de suite s’il existe une nouvelle version et la télécharge, sans attendre la vérification automatique.'
+    ]
+  },
+  {
     version: '1.3.3',
     date: '2026-10-12',
     items: [
