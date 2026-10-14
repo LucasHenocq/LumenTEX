@@ -6,6 +6,14 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.5.1',
+    date: '2026-10-14',
+    items: [
+      'Les fichiers des langages ajoutés par les extensions (Typst…) s’ouvrent dans l’éditeur, sont trouvés par la recherche et se modifient à plusieurs en session, comme les fichiers LaTeX.',
+      'Extensions : la partie Node.js a son propre dossier de données (pour télécharger un programme, par exemple), et répond même si elle est appelée pendant son démarrage. La version d’un compilateur s’affiche dès sa première compilation.'
+    ]
+  },
+  {
     version: '1.5.0',
     date: '2026-10-14',
     items: [

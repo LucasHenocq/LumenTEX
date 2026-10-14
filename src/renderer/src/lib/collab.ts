@@ -10,7 +10,7 @@ import { docs, getActivePath, hooks, markSaved, reconfigureCollab } from '../edi
 import type { ChatMessage, FileRight, UserRight } from '../../../shared/types'
 import { NO_RULES, store, toast, updateSettings, type CollabState } from '../store'
 import { ask } from './dialog'
-import { closeProject, closeTab, followMove, isOwnWrite, openProject, refreshFiles, saveAll, TEXT_FILE, writeFromSession } from './actions'
+import { closeProject, closeTab, followMove, isOwnWrite, openProject, refreshFiles, saveAll, isTextFile, writeFromSession } from './actions'
 
 // Édition à plusieurs en pair-à-pair. Un document Yjs partagé contient tous les fichiers du projet :
 // textes (Y.Text, fusion caractère par caractère) et autres fichiers (octets, le dernier gagne).
@@ -612,7 +612,7 @@ type Change = { path: string; text?: string; bin?: Uint8Array }
 async function readChange(path: string): Promise<Change | null> {
   if (!s?.root || isHidden(path)) return null
   const sess = s
-  if (TEXT_FILE.test(path)) {
+  if (isTextFile(path)) {
     const text = await api.read(sess.root!, path)
     // Écho de nos propres écritures (éventuellement déjà dépassées par la frappe) : ignoré
     if (isOwnWrite(path, text)) return null
@@ -866,7 +866,7 @@ export async function shareProject(opts: { copies: boolean; files: Record<string
   for (const f of await api.list(root)) {
     if (f.isDir || hidden.includes(f.path)) continue
     try {
-      if (TEXT_FILE.test(f.path)) entries.push([f.path, new Y.Text(await api.read(root, f.path))])
+      if (isTextFile(f.path)) entries.push([f.path, new Y.Text(await api.read(root, f.path))])
       else {
         const bin = await api.readBinary(root, f.path)
         if (bin.length <= MAX_BINARY) entries.push([f.path, bin])

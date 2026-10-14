@@ -92,7 +92,7 @@ const api = {
   importFile: (root: string, src: string, destDir: string): Promise<string> => invoke('fs:import', root, src, destDir),
   reveal: (p: string): Promise<void> => invoke('fs:reveal', p),
   openExternal: (p: string): Promise<string> => invoke('fs:openExternal', p),
-  search: (root: string, query: string, opts: { regex?: boolean; caseSensitive?: boolean }): Promise<SearchMatch[]> =>
+  search: (root: string, query: string, opts: { regex?: boolean; caseSensitive?: boolean; extensions?: string[] }): Promise<SearchMatch[]> =>
     invoke('fs:search', root, query, opts),
   createProject: (dir: string, files: TemplateFile[]): Promise<string> => invoke('project:create', dir, files),
 

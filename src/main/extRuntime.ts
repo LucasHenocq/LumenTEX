@@ -147,6 +147,7 @@ export function setExtensionStorage(id: string, key: string, value: unknown): vo
 
 export function dropExtensionStorage(id: string): void {
   fs.rmSync(dataFile(id), { force: true })
+  fs.rmSync(path.join(app.getPath('userData'), 'extension-data', id), { recursive: true, force: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -160,9 +161,13 @@ export function startNodePart(id: string, win: BrowserWindow): void {
   stopNodePart(id)
   const e = installedExtension(id)
   if (!e?.ext.node || !trusted(e.ext)) throw new Error('Cette extension n’a pas de partie Node.js utilisable')
+  // Dossier de données de l'extension (programmes téléchargés…) : hors de son dossier, dont l'empreinte doit rester
+  const dataDir = path.join(app.getPath('userData'), 'extension-data', id)
+  fs.mkdirSync(dataDir, { recursive: true })
   const child = utilityProcess.fork(path.join(__dirname, 'extNodeHost.js'), [path.join(e.folder, e.ext.node)], {
     serviceName: `Extension ${e.ext.name}`,
-    cwd: e.folder
+    cwd: e.folder,
+    env: { ...process.env, LUMEN_EXT_DATA: dataDir, LUMEN_VERSION: app.getVersion() }
   })
   nodeParts.set(id, child)
   child.on('exit', () => nodeParts.get(id) === child && nodeParts.delete(id))

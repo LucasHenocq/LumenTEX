@@ -1,3 +1,4 @@
+import { allLanguages } from '../../lib/languages'
 import { CaseSensitive, Regex } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SearchMatch } from '../../../../shared/types'
@@ -23,7 +24,7 @@ export default function SearchPanel(): React.JSX.Element {
     const timer = setTimeout(async () => {
       setBusy(true)
       await saveAll()
-      const r = await window.api.search(root, query, { regex, caseSensitive })
+      const r = await window.api.search(root, query, { regex, caseSensitive, extensions: allLanguages().flatMap((l) => l.extensions) })
       if (t === token.current) {
         setResults(r)
         setBusy(false)

@@ -37,7 +37,7 @@ interface Running {
   /** Événements écoutés : nom → fonctions */
   listeners: Map<string, Set<Fn>>
   storage: Record<string, unknown>
-  node: { port: MessagePort | null; seq: number; pending: Map<number, { resolve: Fn; reject: Fn }> } | null
+  node: { port: MessagePort | null; seq: number; pending: Map<number, { resolve: Fn; reject: Fn }>; ready: Promise<void>; setReady: () => void } | null
   /** Cadre isolé : appels de ses fonctions en attente de réponse */
   cbPending: Map<number, { resolve: Fn; reject: Fn }>
   cbSeq: number
@@ -519,9 +519,11 @@ function withCleanErrors(api: Record<string, unknown>): Record<string, unknown> 
 // Partie Node.js
 // ---------------------------------------------------------------------------
 
-function nodeCall(r: Running, method: string, args: unknown[]): Promise<unknown> {
+async function nodeCall(r: Running, method: string, args: unknown[]): Promise<unknown> {
   const n = r.node
-  if (!n?.port) return Promise.reject(new Error(r.ext.node ? 'La partie Node.js n’est pas encore prête' : 'Cette extension n’a pas de partie Node.js'))
+  if (!n) throw new Error('Cette extension n’a pas de partie Node.js')
+  // Port pas encore arrivé (démarrage) : attendu
+  if (!n.port) await Promise.race([n.ready, new Promise((_, reject) => setTimeout(() => reject(new Error('La partie Node.js ne répond pas')), 15000))])
   const id = ++n.seq
   return new Promise((resolve, reject) => {
     n.pending.set(id, { resolve, reject: reject as Fn })
@@ -529,8 +531,16 @@ function nodeCall(r: Running, method: string, args: unknown[]): Promise<unknown>
   })
 }
 
+function nodeLink(): NonNullable<Running['node']> {
+  let setReady = (): void => {}
+  const ready = new Promise<void>((resolve) => (setReady = resolve))
+  return { port: null, seq: 0, pending: new Map(), ready, setReady }
+}
+
 function attachNodePort(r: Running, port: MessagePort): void {
-  r.node = { port, seq: 0, pending: new Map() }
+  r.node ??= nodeLink()
+  r.node.port = port
+  r.node.setReady()
   port.onmessage = ({ data: m }) => {
     if (m.t === 'result' || m.t === 'error') {
       const p = r.node?.pending.get(m.id)
@@ -672,7 +682,10 @@ async function startOne(ext: ExtensionInfo): Promise<void> {
   r.api = makeApi(r)
   running.set(ext.id, r)
   if (trusted) {
-    if (ext.node) await window.api.extNodeStart(ext.id).catch((e) => extLog(ext.id, 'error', `Partie Node.js : ${(e as Error).message}`))
+    if (ext.node) {
+      r.node = nodeLink()
+      await window.api.extNodeStart(ext.id).catch((e) => extLog(ext.id, 'error', `Partie Node.js : ${(e as Error).message}`))
+    }
     if (ext.main) {
       await guard(r, async () => {
         const mod = (await import(/* @vite-ignore */ `lumen-ext://app/${ext.id}/${ext.main}`)) as { activate?: Fn; deactivate?: Fn }

@@ -27,7 +27,7 @@ import { emit } from './bus'
 import { contents, removeContent, setAllContents, setFileList, updateContent } from './projectIndex'
 import { collabActive, collabAllows, collabDiskChanged, onProjectOpened, stopSession } from './collab'
 import { isLean, leanChanged, leanClosed, leanShown, refreshGoals } from './lean'
-import { availabilityOf, canBeMain, compilerFor, compilersFor, languageOf, recheckCompilers, registerCompiler, type Compiler, type CompileOutput } from './languages'
+import { availabilityOf, canBeMain, checkCompiler, compilerFor, compilersFor, languageOf, recheckCompilers, registerCompiler, type Compiler, type CompileOutput } from './languages'
 
 const api = window.api
 
@@ -35,6 +35,8 @@ const api = window.api
 export const compileHooks = { leanQed: async (_main: string): Promise<number[]> => [] }
 
 export const TEXT_FILE = /\.(tex|bib|sty|cls|bst|txt|md|ltx|dtx|ins|cfg|def|clo|bbx|cbx|lbx|tikz|pgf|csv|dat|json|ya?ml|latexmkrc|log|lean)$/i
+/** Fichier texte : extensions connues, ou langage enregistré (ceux des extensions compris) */
+export const isTextFile = (path: string): boolean => TEXT_FILE.test(path) || !!languageOf(path)
 export const IMAGE_FILE = /\.(png|jpe?g|gif|bmp|svg|webp|tiff?)$/i
 
 const basename = (p: string): string => p.slice(p.lastIndexOf('/') + 1)
@@ -267,7 +269,7 @@ export async function refreshFiles(): Promise<void> {
 export async function openFile(path: string, opts: { background?: boolean; line?: number; col?: number } = {}): Promise<void> {
   const { root, tabs } = store.get()
   if (!root) return
-  if (!docs.has(path) && (TEXT_FILE.test(path) || !/\.\w+$/.test(path))) {
+  if (!docs.has(path) && (isTextFile(path) || !/\.\w+$/.test(path))) {
     try {
       const text = contents.get(path) ?? (await api.read(root, path))
       openDoc(path, text)
@@ -544,6 +546,8 @@ export function setExtensionDiagnostics(list: Diagnostic[]): void {
   publishDiagnostics()
 }
 
+const checkedAfterCompile = new Set<string>()
+
 /** Compilateur de la dernière compilation (arrêt, aller du texte au PDF) */
 let lastCompiler: Compiler | null = null
 const currentCompiler = (): Compiler | undefined => {
@@ -627,6 +631,11 @@ export async function compile(opts: { auto?: boolean } = {}): Promise<void> {
     publishDiagnostics()
     if (r.error && !r.diagnostics.length) toast(r.error, 'error', undefined, 6000)
     emit('compile:done', r)
+    // Première compilation : le compilateur a pu s'installer entre-temps (version à jour dans la barre d'état)
+    if (!checkedAfterCompile.has(compiler.id)) {
+      checkedAfterCompile.add(compiler.id)
+      void checkCompiler(compiler)
+    }
   } catch (e) {
     store.set({ compileStatus: 'error', compileProgress: '' })
     toast(`Erreur de compilation : ${(e as Error).message}`, 'error')

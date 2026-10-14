@@ -1,3 +1,4 @@
+import { languageOf } from '../lib/languages'
 import { ArrowUp, ChevronDown, ChevronUp, CornerDownLeft, Download, FileText, KeyRound, LogIn, Paperclip, Play, Sparkles, Square, Trash2, Wrench, X } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { CONVERTIBLE } from '../../../shared/convert'
@@ -503,7 +504,7 @@ export default function Copilot(): React.JSX.Element {
   const attach = async (): Promise<void> => {
     const taken = new Set(attached.map((a) => a.path))
     const candidates = files
-      .filter((f) => !f.isDir && TEXT_FILE.test(f.path) && !taken.has(f.path) && f.path !== active)
+      .filter((f) => !f.isDir && (TEXT_FILE.test(f.path) || !!languageOf(f.path)) && !taken.has(f.path) && f.path !== active)
       .slice(0, 40)
     const choice = await window.api.popupMenu([
       ...candidates.map((f) => ({ id: f.path, label: f.path })),

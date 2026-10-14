@@ -594,7 +594,7 @@ function registerIpc(): void {
   ipcMain.handle('fs:reveal', (_e, p: string) => shell.showItemInFolder(p))
   ipcMain.handle('fs:openExternal', (_e, p: string) => shell.openPath(p))
 
-  ipcMain.handle('fs:search', (_e, root: string, query: string, opts: { regex?: boolean; caseSensitive?: boolean }) => {
+  ipcMain.handle('fs:search', (_e, root: string, query: string, opts: { regex?: boolean; caseSensitive?: boolean; extensions?: string[] }) => {
     const matches: SearchMatch[] = []
     if (!query) return matches
     let re: RegExp
@@ -605,7 +605,8 @@ function registerIpc(): void {
       return matches
     }
     for (const f of walk(root)) {
-      if (f.isDir || !TEXT_EXT.test(f.path)) continue
+      // Fichiers texte connus, et ceux des langages ajoutés par les extensions
+      if (f.isDir || !(TEXT_EXT.test(f.path) || opts.extensions?.some((e) => f.path.toLowerCase().endsWith(e)))) continue
       let text: string
       try {
         text = fs.readFileSync(path.join(root, f.path), 'utf8')

@@ -77,11 +77,17 @@ const availability = new Map<string, Availability>()
 /** Les changements de compilateurs (ou de leur disponibilité) redessinent les menus */
 const changed = (): void => store.set((s) => ({ compilersVersion: s.compilersVersion + 1 }))
 
+/** Même identifiant : le nouveau remplace l'ancien (le code d'une extension complète le langage de son manifeste) */
 export function registerLanguage(l: Language): () => void {
-  languages.push(l)
+  const i = languages.findIndex((x) => x.id === l.id)
+  const previous = i >= 0 ? languages[i] : null
+  if (previous) languages[i] = l
+  else languages.push(l)
   return () => {
-    const i = languages.indexOf(l)
-    if (i >= 0) languages.splice(i, 1)
+    const j = languages.indexOf(l)
+    if (j < 0) return
+    if (previous) languages[j] = previous
+    else languages.splice(j, 1)
   }
 }
 

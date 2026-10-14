@@ -20,7 +20,9 @@ const text = (args: unknown[]): string[] => args.map((a) => (typeof a === 'strin
 for (const level of ['log', 'info', 'warn', 'error'] as const) console[level] = (...args: unknown[]) => post({ t: 'log', level, args: text(args) })
 
 const lumen = {
-  version: process.env.npm_package_version ?? '',
+  version: process.env.LUMEN_VERSION ?? '',
+  /** Dossier de données de l'extension (programmes téléchargés, caches), effacé à sa désinstallation */
+  dataDir: process.env.LUMEN_EXT_DATA ?? '',
   /** Répond aux appels lumen.node.call(name, ...args) de la partie fenêtre */
   handle: (name: string, fn: Handler): void => void handlers.set(name, fn),
   /** Événement reçu par lumen.node.on(name, ...) dans la partie fenêtre */
