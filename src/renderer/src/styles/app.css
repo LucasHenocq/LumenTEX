@@ -3110,6 +3110,151 @@ button.settings-version:hover {
 .ext-folder {
   margin-top: 4px;
 }
+.ext-card {
+  flex-wrap: wrap;
+}
+.ext-card.off {
+  opacity: 0.55;
+}
+.ext-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ext-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--chip);
+  color: var(--text-muted);
+}
+.ext-badge.ok {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.ext-badge.warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.ext-badge.dev {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ext-actions .switch {
+  align-self: center;
+}
+.ext-settings {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.ext-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.ext-setting > span {
+  display: flex;
+  flex-direction: column;
+}
+.ext-setting small {
+  color: var(--text-faint);
+}
+.ext-setting .input {
+  max-width: 55%;
+}
+.ext-folder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ext-dev-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ext-dev-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ext-log.error {
+  color: var(--danger);
+}
+.ext-log.warn {
+  color: var(--warning);
+}
+/* Panneau d'une extension : son élément, ou son cadre isolé posé au-dessus de cette zone */
+.ext-panel-zone {
+  position: relative;
+  padding: 0;
+}
+.ext-panel-root {
+  padding: 10px 12px;
+}
+#ext-frames iframe.ext-frame {
+  position: fixed;
+  display: none;
+  border: 0;
+  z-index: 4;
+  background: var(--panel);
+}
+.ab-ext-icon {
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+}
+.sb-dev {
+  color: var(--warning);
+  font-weight: 600;
+}
+/* Choix du compilateur, à droite de « Live » */
+.compiler-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 9px;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.compiler-btn:hover {
+  background: var(--accent-hover);
+}
+/* Questions au style de l'app (lib/dialog) */
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dialog-message {
+  margin: 0;
+  line-height: 1.55;
+}
+.dialog-detail {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
 /* Barre latérale : boutons sous le texte */
 .ext-panel {
   padding: 0 12px 20px;

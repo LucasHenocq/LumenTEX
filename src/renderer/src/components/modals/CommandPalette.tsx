@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { openFile } from '../../lib/actions'
 import { COMMAND_LIST, runCommand } from '../../lib/commands'
+import { shortcutLabel } from '../../lib/extHost'
 import { store, useApp } from '../../store'
 import FileIcon from '../FileIcon'
 import { closeModal } from '../Modals'
@@ -37,6 +38,7 @@ export default function CommandPalette({ mode: initialMode }: { mode: 'commands'
   const [sel, setSel] = useState(0)
   const files = useApp((s) => s.files)
   const root = useApp((s) => s.root)
+  const extCommands = useApp((s) => s.extUi.commands)
   const listRef = useRef<HTMLDivElement>(null)
 
   const isCommands = query.startsWith('>')
@@ -44,11 +46,16 @@ export default function CommandPalette({ mode: initialMode }: { mode: 'commands'
 
   const items = useMemo<Item[]>(() => {
     if (isCommands || !root) {
-      return COMMAND_LIST.filter((c) => !c.needsProject || root)
+      // Commandes de Lumen TeX, puis celles des extensions (« Nom de l'extension : … »)
+      const all = [
+        ...COMMAND_LIST.filter((c) => !c.needsProject || root).map((c) => ({ id: c.id, label: c.label, shortcut: c.shortcut ?? '', run: () => runCommand(c.id) })),
+        ...extCommands.map((c) => ({ id: c.id, label: c.label, shortcut: shortcutLabel(c.shortcut), run: () => void c.run() }))
+      ]
+      return all
         .map((c) => ({ c, score: fuzzy(q, c.label) }))
         .filter((x) => x.score >= 0)
         .sort((a, b) => a.score - b.score)
-        .map(({ c }) => ({ key: c.id, label: c.label, hint: c.shortcut && kb(c.shortcut), run: () => runCommand(c.id) }))
+        .map(({ c }) => ({ key: c.id, label: c.label, hint: c.shortcut && kb(c.shortcut), run: c.run }))
     }
     return files
       .filter((f) => !f.isDir)
@@ -57,7 +64,7 @@ export default function CommandPalette({ mode: initialMode }: { mode: 'commands'
       .sort((a, b) => a.score - b.score || a.f.path.length - b.f.path.length)
       .slice(0, 60)
       .map(({ f }) => ({ key: f.path, label: f.path.split('/').pop()!, hint: f.path, file: f.path, run: () => void openFile(f.path) }))
-  }, [q, isCommands, files, root])
+  }, [q, isCommands, files, root, extCommands])
 
   useEffect(() => setSel(0), [query])
   useEffect(() => {

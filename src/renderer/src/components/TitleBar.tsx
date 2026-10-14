@@ -12,7 +12,7 @@ import {
   Zap
 } from 'lucide-react'
 import { useMemo } from 'react'
-import { isRootDocument } from '../latex/analysis'
+import { availableFor, canBeMain, compilerFor, languageOf } from '../lib/languages'
 import { cancelCompile, compile, exportPdf, setMainFile } from '../lib/actions'
 import { contents } from '../lib/projectIndex'
 import { store, updateSettings, useApp } from '../store'
@@ -46,17 +46,32 @@ export default function TitleBar(): React.JSX.Element {
   const indexVersion = useApp((s) => s.indexVersion)
   const hasPdf = useApp((s) => !!s.pdf)
 
+  const files = useApp((s) => s.files)
+  useApp((s) => s.compilersVersion)
+  // Fichiers principaux possibles : ceux qu'un compilateur sait compiler (LaTeX : avec \documentclass)
   const roots = useMemo(() => {
     void indexVersion
-    return [...contents.entries()].filter(([f, t]) => /\.tex$/i.test(f) && isRootDocument(t)).map(([f]) => f).sort()
-  }, [indexVersion])
+    return files
+      .filter((f) => !f.isDir && canBeMain(f.path, contents.get(f.path)))
+      .map((f) => f.path)
+      .sort()
+  }, [indexVersion, files])
+  const mainLang = languageOf(mainFile)
+  const compilers = mainLang ? availableFor(mainLang.id) : []
+  const compiler = mainLang && compilerFor(mainLang.id)
+
+  const chooseCompiler = async (): Promise<void> => {
+    if (!mainLang) return
+    const id = await window.api.popupMenu(compilers.map((c) => ({ id: c.id, label: (c === compiler ? '✓ ' : '    ') + c.name })))
+    if (id) void updateSettings({ compilers: { ...store.get().settings.compilers, [mainLang.id]: id } })
+  }
 
   const chooseMain = async (): Promise<void> => {
-    const candidates = roots.length ? roots : [...contents.keys()].filter((f) => /\.tex$/i.test(f))
+    const candidates = roots
     const id = await window.api.popupMenu(
       candidates.length
         ? candidates.map((f) => ({ id: f, label: (f === mainFile ? '✓ ' : '    ') + f }))
-        : [{ label: 'Aucun document .tex', enabled: false }]
+        : [{ label: 'Aucun document à compiler', enabled: false }]
     )
     if (id) void setMainFile(id)
   }
@@ -103,6 +118,13 @@ export default function TitleBar(): React.JSX.Element {
             <Zap size={14} fill={auto ? 'currentColor' : 'none'} />
             <span>Live</span>
           </button>
+          {/* Plusieurs compilateurs disponibles pour ce langage : choix */}
+          {compilers.length > 1 && compiler && (
+            <button className="compiler-btn" onClick={() => void chooseCompiler()} title="Compilateur">
+              <span>{compiler.name}</span>
+              <ChevronDown size={12} />
+            </button>
+          )}
         </div>
       </div>
 

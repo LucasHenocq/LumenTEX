@@ -10,6 +10,7 @@ import Workspace from './Workspace'
 import { checkWhatsNew } from '../lib/changelog'
 import { initLean } from '../lib/lean'
 import { applyColorTheme, loadExtensions } from '../lib/extensions'
+import { resumeAfterReload, startExtensions } from '../lib/extHost'
 // Coches des preuves (crochets de l'éditeur)
 import '../lib/proofs'
 
@@ -65,12 +66,14 @@ export default function App(): React.JSX.Element {
       applyTheme()
       store.set({ ready: true })
       checkWhatsNew()
+      await startExtensions()
       const pending = await api.pendingOpen()
       if (pending) await openPath(pending)
       else if (settings.lastProject) {
         const st = await api.stat(settings.lastProject)
         if (st.exists) await openProject(settings.lastProject)
       }
+      resumeAfterReload()
     })()
 
     return () => {

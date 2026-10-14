@@ -25,6 +25,7 @@ export default function ActivityBar(): React.JSX.Element {
   const errors = useApp((s) => s.diagnostics.filter((d) => d.severity === 'error').length)
   const inSession = useApp((s) => s.collab.active && !s.collab.joining)
   const unread = useUnreadChat()
+  const extPanels = useApp((s) => s.extUi.panels)
 
   const select = (id: SidebarPanel): void => {
     if (panel === id && visible) void updateSettings({ sidebarVisible: false })
@@ -40,6 +41,11 @@ export default function ActivityBar(): React.JSX.Element {
         <button key={id} className={`ab-item${panel === id && visible ? ' active' : ''}`} title={kb(label)} onClick={() => select(id)}>
           <Icon size={20} strokeWidth={1.7} />
           {id === 'files' && errors > 0 && <span className="ab-badge">{errors}</span>}
+        </button>
+      ))}
+      {extPanels.map((p) => (
+        <button key={p.key} className={`ab-item${panel === p.key && visible ? ' active' : ''}`} title={`${p.title} — extension`} onClick={() => select(p.key)}>
+          {p.icon ? <span className="ab-ext-icon" style={{ maskImage: `url("${p.icon}")`, WebkitMaskImage: `url("${p.icon}")` }} /> : <Puzzle size={20} strokeWidth={1.7} />}
         </button>
       ))}
       {inSession && (

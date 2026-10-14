@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { LeanStep } from './lib/leanSteps'
 import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, ExtensionInfo, FileEntry, LeanDiag, LeanProgress, LeanStatus, Settings, TectonicStatus, UserRight } from '../../shared/types'
 
-export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat' | 'extensions'
+export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat' | 'extensions' | `ext:${string}`
 
 export type Modal =
   | { type: 'new-project' }
@@ -16,6 +16,8 @@ export type Modal =
   | { type: 'collab'; join?: boolean }
   /** since : nouveautés installées depuis cette version ; absent : historique complet */
   | { type: 'whats-new'; since?: string }
+  /** Question au style de l'app (extensions, session) */
+  | { type: 'dialog'; req: import('./lib/dialog').DialogRequest; resolve: (a: import('./lib/dialog').DialogAnswer) => void }
   | null
 
 /** Fin d'une vérification par l'IA : énoncé et étapes à valider (acceptée par Lean), ou étapes en cause (refused) */
@@ -63,7 +65,7 @@ export interface CollabState {
   /** Invité en attente du contenu de la session (avant la création du dossier) */
   joining: boolean
   /** Autres participants, d'après leur présence (nom, couleur, fichier ouvert, en train d'écrire) */
-  people: { id: number; uid: string; name: string; color: string; file: string | null; typing: boolean }[]
+  people: { id: number; uid: string; name: string; color: string; file: string | null; typing: boolean; dev: { name: string; version: string }[] }[]
   /** Discussion de la session (ordre partagé par tous) */
   chat: ChatMessage[]
   /** Arrivées et départs, affichés localement dans la discussion (non conservés) */
@@ -119,8 +121,44 @@ export interface AppState {
   updateProgress: number | null
   lean: LeanState
   proofRun: ProofRun | null
-  /** Extensions installées (sans code) */
+  /** Extensions installées */
   extensions: ExtensionInfo[]
+  /** Compilateurs enregistrés, ou leur disponibilité, ont changé (menus à redessiner) */
+  compilersVersion: number
+  /** Apports des extensions avec code : panneaux, éléments de la barre d'état, commandes */
+  extUi: { panels: ExtPanel[]; status: ExtStatusItem[]; commands: ExtCommand[] }
+  /** Journal des extensions (messages et erreurs) */
+  extLogs: ExtLog[]
+}
+
+export interface ExtPanel {
+  key: `ext:${string}`
+  extId: string
+  title: string
+  /** Icône SVG (data URL), vide = pièce de puzzle */
+  icon: string
+  /** Extension de confiance : élément dessiné par elle ; isolée : son cadre est le panneau */
+  el: HTMLElement | null
+}
+export interface ExtStatusItem {
+  key: string
+  extId: string
+  text: string
+  tooltip: string
+  onClick: (() => void) | null
+}
+export interface ExtCommand {
+  id: string
+  extId: string
+  label: string
+  shortcut: string
+  run: () => unknown
+}
+export interface ExtLog {
+  ts: number
+  extId: string
+  level: 'log' | 'info' | 'warn' | 'error'
+  text: string
 }
 
 type Listener = () => void
@@ -183,6 +221,9 @@ export const store = createStore<AppState>({
   lean: { status: { ready: false }, install: null, diags: {}, busy: {}, goals: null },
   proofRun: null,
   extensions: [],
+  compilersVersion: 0,
+  extUi: { panels: [], status: [], commands: [] },
+  extLogs: [],
   collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [], rules: NO_RULES }
 })
 

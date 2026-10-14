@@ -14,6 +14,12 @@ export interface BusEvents {
   'copilot:ask': string
   /** Déplie le panneau du copilot (ex. depuis les réglages, pour se connecter) */
   'copilot:show': void
+  /** Compilation commencée, terminée (extensions : lumen.compile.onStart / onDone) */
+  'compile:start': { mainFile: string; compiler: string }
+  'compile:done': import('../../../shared/types').CompileResult
+  /** Texte d'un document ouvert modifié ; fichiers du projet changés sur le disque */
+  'doc:changed': string
+  'fs:changed': string[]
 }
 
 export function on<K extends keyof BusEvents>(event: K, handler: (p: BusEvents[K]) => void): () => void {

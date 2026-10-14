@@ -3,7 +3,7 @@ import { toggleComment } from '@codemirror/commands'
 import { openSearchPanel } from '@codemirror/search'
 import { EditorSelection } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
-import type { FileEntry, TemplateFile } from '../../../shared/types'
+import type { CompileResult, Diagnostic, FileEntry, TemplateFile } from '../../../shared/types'
 import { countWords, isRootDocument } from '../latex/analysis'
 import {
   closeDoc,
@@ -27,6 +27,7 @@ import { emit } from './bus'
 import { contents, removeContent, setAllContents, setFileList, updateContent } from './projectIndex'
 import { collabActive, collabAllows, collabDiskChanged, onProjectOpened, stopSession } from './collab'
 import { isLean, leanChanged, leanClosed, leanShown, refreshGoals } from './lean'
+import { availabilityOf, canBeMain, compilerFor, compilersFor, languageOf, recheckCompilers, registerCompiler, type Compiler, type CompileOutput } from './languages'
 
 const api = window.api
 
@@ -66,11 +67,12 @@ let wordTimer: number | undefined
 
 hooks.onDocChanged = (path, state) => {
   refreshDirty(path)
+  emit('doc:changed', path)
   if (isLean(path)) leanChanged(path, state)
   clearTimeout(indexTimer)
   indexTimer = window.setTimeout(() => updateContent(path, state.doc.toString()), 400)
   const s = store.get().settings
-  if (s.autoCompile && /\.(tex|bib|sty|cls)$/i.test(path)) {
+  if (s.autoCompile && (languageOf(path)?.autoCompile ?? !!languageOf(path))) {
     clearTimeout(compileTimer)
     compileTimer = window.setTimeout(() => void compile({ auto: true }), Math.max(300, s.compileDelay))
   }
@@ -101,15 +103,18 @@ function scheduleWordCount(): void {
 // Projet
 // ---------------------------------------------------------------------------
 
-function guessMainFile(files: FileEntry[], all: Record<string, string>): string | null {
-  const tex = files.filter((f) => !f.isDir && /\.tex$/i.test(f.path)).map((f) => f.path)
-  const roots = tex.filter((f) => all[f] !== undefined && isRootDocument(all[f]))
+/** Fichier principal probable : un document complet (LaTeX : \documentclass) de préférence, main.* d'abord */
+export function guessMainFile(files: FileEntry[], all: Record<string, string>): string | null {
+  // Texte inconnu (non lu à l'ouverture) : retenu seulement si son langage n'exige rien du contenu
+  const roots = files
+    .filter((f) => !f.isDir && canBeMain(f.path, all[f.path]) && (all[f.path] !== undefined || !languageOf(f.path)?.isMain))
+    .map((f) => f.path)
   const pick = (list: string[]): string | null =>
-    list.find((f) => /^main\.tex$/i.test(f)) ??
-    list.find((f) => /^(these|thesis|memoire|rapport|report|article|document|cv)\.tex$/i.test(basename(f))) ??
+    list.find((f) => /^main\.[^./]+$/i.test(f)) ??
+    list.find((f) => /^(these|thesis|memoire|rapport|report|article|document|cv)\.[^.]+$/i.test(basename(f))) ??
     list.sort((a, b) => a.split('/').length - b.split('/').length)[0] ??
     null
-  return pick(roots) ?? pick(tex)
+  return pick(roots)
 }
 
 export async function openProject(root: string, opts: { openFile?: string } = {}): Promise<void> {
@@ -159,7 +164,7 @@ export async function openProject(root: string, opts: { openFile?: string } = {}
   setFileList(files.filter((f) => !f.isDir).map((f) => f.path))
   const fileSet = new Set(files.filter((f) => !f.isDir).map((f) => f.path))
   let mainFile = prefs.mainFile && fileSet.has(prefs.mainFile) ? prefs.mainFile : guessMainFile(files, all)
-  if (opts.openFile && all[opts.openFile] !== undefined && isRootDocument(all[opts.openFile])) mainFile = opts.openFile
+  if (opts.openFile && all[opts.openFile] !== undefined && canBeMain(opts.openFile, all[opts.openFile])) mainFile = opts.openFile
 
   store.set({
     settings,
@@ -210,6 +215,8 @@ export async function closeProject(): Promise<void> {
   }
   showDoc(null)
   await api.watch(null)
+  compileDiags = []
+  extDiags = []
   store.set({ root: null, files: [], tabs: [], active: null, mainFile: null, pdf: null, diagnostics: [], result: null, dirty: {} })
   api.setDirty(false)
   document.title = 'Lumen TeX'
@@ -223,6 +230,14 @@ function persistTabs(): void {
   if (!root) return
   const projects = { ...settings.projects, [root]: { ...settings.projects[root], mainFile: mainFile ?? undefined, openTabs: tabs, active } }
   void updateSettings({ projects })
+}
+
+/** Aucun fichier principal (langage d'une extension pas encore chargée à l'ouverture) : nouvel essai */
+export function ensureMainFile(): void {
+  const { root, mainFile, files } = store.get()
+  if (!root || mainFile) return
+  const guess = guessMainFile(files, Object.fromEntries(contents))
+  if (guess) void setMainFile(guess)
 }
 
 export async function setMainFile(path: string): Promise<void> {
@@ -338,6 +353,7 @@ export async function handleFsChanged(paths: string[]): Promise<void> {
   const { root } = store.get()
   if (!root) return
   await refreshFiles()
+  emit('fs:changed', paths)
   // Session partagée : le disque alimente la session, qui met à jour l'éditeur (pas de rechargement ici)
   if (collabActive()) {
     await collabDiskChanged(paths)
@@ -498,15 +514,88 @@ export async function importFiles(paths: string[], destDir: string): Promise<str
 let compiling = false
 let pending = false
 
+// Tectonic : compilateur de LaTeX de Lumen TeX, enregistré comme ceux des extensions
+registerCompiler({
+  id: 'tectonic',
+  name: 'Tectonic',
+  language: 'latex',
+  owner: 'lumen',
+  check: async () => {
+    const t = store.get().tectonic ?? (await api.tectonicStatus())
+    return t.found ? { ok: true, version: t.version } : { ok: false, reason: 'Tectonic n’est pas installé. Installez-le depuis l’écran d’accueil.' }
+  },
+  compile: async ({ root, mainFile }) => api.compile(root, mainFile, await compileHooks.leanQed(mainFile)),
+  cancel: () => api.cancelCompile(),
+  sync: {
+    forward: (file, line) => api.syncForward(store.get().root!, store.get().mainFile!, file, line),
+    reverse: (page, x, y) => api.syncReverse(store.get().root!, store.get().mainFile!, page, x, y)
+  }
+})
+
+// Diagnostics affichés : ceux de la dernière compilation, puis ceux des extensions
+let compileDiags: Diagnostic[] = []
+let extDiags: Diagnostic[] = []
+function publishDiagnostics(): void {
+  store.set({ diagnostics: [...compileDiags, ...extDiags] })
+  getView()?.dispatch({ effects: refreshLint.of(null) })
+}
+export function setExtensionDiagnostics(list: Diagnostic[]): void {
+  extDiags = list
+  publishDiagnostics()
+}
+
+/** Compilateur de la dernière compilation (arrêt, aller du texte au PDF) */
+let lastCompiler: Compiler | null = null
+const currentCompiler = (): Compiler | undefined => {
+  const lang = languageOf(store.get().mainFile)
+  return lastCompiler && lastCompiler.language === lang?.id ? lastCompiler : lang && compilerFor(lang.id)
+}
+
+/** Résultat d'un compilateur d'extension, mis au format de Lumen TeX (PDF en octets écrit dans .lumentex) */
+async function toResult(out: CompileResult | CompileOutput, root: string, mainFile: string, started: number): Promise<CompileResult> {
+  if ('durationMs' in out) return out
+  let pdfPath: string | null = null
+  if (out.pdf instanceof Uint8Array) {
+    const rel = `.lumentex/${basename(mainFile).replace(/\.[^.]+$/, '')}.pdf`
+    await api.writeBinary(root, rel, out.pdf)
+    pdfPath = `${root}/${rel}`
+  } else if (typeof out.pdf === 'string' && out.pdf) pdfPath = /^([a-zA-Z]:|\/)/.test(out.pdf) ? out.pdf : `${root}/${out.pdf}`
+  return {
+    ok: out.ok ?? (!!pdfPath && !out.error),
+    pdfPath,
+    diagnostics: out.diagnostics ?? [],
+    log: out.log ?? '',
+    output: '',
+    durationMs: Date.now() - started,
+    error: out.error
+  }
+}
+
 export async function compile(opts: { auto?: boolean } = {}): Promise<void> {
-  const { root, mainFile, tectonic } = store.get()
+  const { root, mainFile } = store.get()
   if (!root) return
   if (!mainFile) {
-    if (!opts.auto) toast('Aucun fichier principal : faites un clic droit sur un fichier .tex › « Définir comme fichier principal »', 'error', undefined, 6000)
+    if (!opts.auto) toast('Aucun fichier principal : faites un clic droit sur un fichier › « Définir comme fichier principal »', 'error', undefined, 6000)
     return
   }
-  if (!tectonic?.found) {
-    if (!opts.auto) toast('Tectonic n’est pas installé. Installez-le depuis l’écran d’accueil.', 'error')
+  const lang = languageOf(mainFile)
+  let compiler = lang && compilerFor(lang.id)
+  // Disponibilité peut-être périmée (Tectonic installé depuis) : nouvelle vérification avant d'abandonner
+  if (lang && !compiler && compilersFor(lang.id).length) {
+    await recheckCompilers()
+    compiler = compilerFor(lang.id)
+  }
+  if (!compiler) {
+    if (!opts.auto) {
+      const known = lang ? compilersFor(lang.id) : []
+      const reason = known.length ? (availabilityOf(known[0])?.reason ?? `${known[0].name} n’est pas disponible.`) : null
+      toast(
+        reason ?? (lang ? `Aucun compilateur pour les fichiers ${lang.name}. Une extension peut en ajouter un.` : 'Ce fichier ne peut pas être compilé.'),
+        'error',
+        undefined,
+        6000
+      )
+    }
     return
   }
   clearTimeout(compileTimer)
@@ -518,21 +607,26 @@ export async function compile(opts: { auto?: boolean } = {}): Promise<void> {
   await saveAll()
   store.set({ compileStatus: 'running', compileProgress: '' })
   try {
-    const r = await api.compile(root, mainFile, await compileHooks.leanQed(mainFile))
+    const started = Date.now()
+    lastCompiler = compiler
+    emit('compile:start', { mainFile, compiler: compiler.id })
+    const out = await compiler.compile({ root, mainFile, outDir: '.lumentex', onProgress: (text) => store.set({ compileProgress: text }) })
+    const r = await toResult(out, root, mainFile, started)
     if (store.get().root !== root) return
     const errors = r.diagnostics.filter((d) => d.severity === 'error').length
     const warnings = r.diagnostics.filter((d) => d.severity === 'warning').length
     let status: 'success' | 'warning' | 'error' = errors || !r.pdfPath || r.error ? 'error' : warnings ? 'warning' : 'success'
     if (r.error && !r.pdfPath) status = 'error'
+    compileDiags = r.diagnostics
     store.set({
       result: r,
-      diagnostics: r.diagnostics,
       compileStatus: status,
       compileProgress: '',
       pdf: r.pdfPath ? { path: r.pdfPath, version: Date.now() } : store.get().pdf
     })
+    publishDiagnostics()
     if (r.error && !r.diagnostics.length) toast(r.error, 'error', undefined, 6000)
-    getView()?.dispatch({ effects: refreshLint.of(null) })
+    emit('compile:done', r)
   } catch (e) {
     store.set({ compileStatus: 'error', compileProgress: '' })
     toast(`Erreur de compilation : ${(e as Error).message}`, 'error')
@@ -547,14 +641,16 @@ export async function compile(opts: { auto?: boolean } = {}): Promise<void> {
 
 export async function cancelCompile(): Promise<void> {
   pending = false
-  await api.cancelCompile()
+  await currentCompiler()?.cancel?.()
 }
 
 export async function cleanBuild(): Promise<void> {
   const { root } = store.get()
   if (!root) return
   await api.cleanBuild(root)
-  store.set({ pdf: null, result: null, diagnostics: [] })
+  compileDiags = []
+  store.set({ pdf: null, result: null })
+  publishDiagnostics()
   toast('Fichiers de compilation supprimés', 'success')
 }
 
@@ -584,7 +680,12 @@ export async function syncForward(path?: string, line?: number): Promise<void> {
   if (!root || !mainFile || !file) return
   const state = stateOf(file)
   const ln = line ?? (state ? state.doc.lineAt(state.selection.main.head).number : 1)
-  const r = await api.syncForward(root, mainFile, file, ln)
+  const forward = currentCompiler()?.sync?.forward
+  if (!forward) {
+    toast('Ce compilateur ne permet pas d’aller du texte au PDF')
+    return
+  }
+  const r = await forward(file, ln)
   if (!r) {
     toast('Position introuvable dans le PDF (recompilez ?)')
     return
@@ -596,7 +697,7 @@ export async function syncForward(path?: string, line?: number): Promise<void> {
 export async function syncReverse(page: number, x: number, y: number): Promise<void> {
   const { root, mainFile } = store.get()
   if (!root || !mainFile) return
-  const r = await api.syncReverse(root, mainFile, page, x, y)
+  const r = await currentCompiler()?.sync?.reverse?.(page, x, y)
   if (!r) return
   await openFile(r.file, { line: r.line })
 }

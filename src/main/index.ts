@@ -27,7 +27,19 @@ import { askOllama, ollamaStatus, pullOllamaModel, startOllama, stopOllama } fro
 import { buildDocs, docsStatus, userDocsDir } from './docs'
 import { dropGuestDirs, guestDir, isGuestDir, keepGuestCopy } from './collab'
 import { checkMacUpdate, installMacUpdate, type MacUpdate } from './macUpdate'
-import { cleanCatalog, fetchCatalog, installedExtensions, installExtensionFolder, installFromCatalog, uninstallExtension } from './extensions'
+import { cleanCatalog, fetchCatalog, installedExtensions, installExtensionFolder, installFromCatalog, linkExtensionFolder, readExtension, uninstallExtension } from './extensions'
+import {
+  dropExtensionStorage,
+  extensionFetch,
+  extensionStorage,
+  handleExtensionPermissions,
+  handleExtensionProtocol,
+  registerExtensionScheme,
+  setExtensionStorage,
+  startNodePart,
+  stopAllNodeParts,
+  stopNodePart
+} from './extRuntime'
 import { collabStatus, newCode, normalizeCode, sendCollab, startCollab, stopCollab } from './collab'
 import { discard, discardAll, prepareData, prepareFile, runConvert, stopConvert } from './convert'
 
@@ -423,10 +435,31 @@ function registerIpc(): void {
   ipcMain.handle('ext:list', () => installedExtensions())
   ipcMain.handle('ext:catalog', () => fetchCatalog().catch(() => null))
   ipcMain.handle('ext:install', (_e, id: string) => installFromCatalog(id))
-  ipcMain.handle('ext:uninstall', (_e, id: string) => uninstallExtension(id))
-  ipcMain.handle('ext:install-folder', async () => {
+  ipcMain.handle('ext:uninstall', (_e, id: string) => {
+    stopNodePart(id)
+    uninstallExtension(id)
+    dropExtensionStorage(id)
+  })
+  // Mode développeur : relier le dossier au lieu de le copier
+  // Dossier choisi et lu d'abord (l'utilisateur confirme ses permissions), installé ensuite
+  ipcMain.handle('ext:pick-folder', async () => {
     const r = await dialog.showOpenDialog(win!, { title: 'Dossier de l’extension (avec lumen-extension.json)', properties: ['openDirectory'] })
-    return r.canceled ? null : installExtensionFolder(r.filePaths[0])
+    return r.canceled ? null : { folder: r.filePaths[0], ext: readExtension(r.filePaths[0]) }
+  })
+  ipcMain.handle('ext:install-path', (_e, folder: string, link?: boolean) =>
+    link && getSettings().extDevMode ? linkExtensionFolder(folder) : installExtensionFolder(folder)
+  )
+  ipcMain.handle('ext:fetch', (_e, id: string, url: string, init: Parameters<typeof extensionFetch>[2]) => extensionFetch(id, url, init))
+  ipcMain.handle('ext:storage', (_e, id: string) => extensionStorage(id))
+  ipcMain.handle('ext:storage-set', (_e, id: string, key: string, value: unknown) => setExtensionStorage(id, key, value))
+  ipcMain.handle('ext:node-start', (_e, id: string) => startNodePart(id, win!))
+  ipcMain.handle('ext:node-stop', (_e, id: string) => stopNodePart(id))
+  ipcMain.handle('ext:devtools', () => win?.webContents.openDevTools({ mode: 'detach' }))
+  // Redémarrage complet (extensions rechargées pendant une session partagée : la session reprend dans un nouveau processus)
+  ipcMain.handle('app:relaunch', () => {
+    allowClose = true
+    app.relaunch()
+    app.quit()
   })
   ipcMain.handle('dialog:confirm', async (_e, message: string, detail?: string, okLabel = 'Confirmer', cancelLabel = 'Annuler') => {
     const r = await dialog.showMessageBox(win!, {
@@ -820,6 +853,8 @@ const fileArg = (argv: string[]): string | null => argv.find((a) => /\.(tex|bib)
 pendingOpenPath ??= fileArg(process.argv)
 
 // Une seule fenêtre : un deuxième lancement (double-clic sur un autre .tex) est transmis à l'instance ouverte
+// Extensions : protocole lumen-ext, à déclarer avant que l'app soit prête
+registerExtensionScheme()
 if (!app.requestSingleInstanceLock()) app.exit(0)
 app.on('second-instance', (_e, argv) => {
   if (!win) return
@@ -831,6 +866,8 @@ app.on('second-instance', (_e, argv) => {
 
 void app.whenReady().then(() => {
   nativeTheme.themeSource = getSettings().theme
+  handleExtensionProtocol()
+  handleExtensionPermissions(() => win)
   registerIpc()
   buildMenu()
   createWindow()
@@ -933,6 +970,7 @@ app.on('will-quit', () => {
   dropGuestDirs()
   stopLeanServer()
   cleanCatalog()
+  stopAllNodeParts()
 })
 void app.whenReady().then(() => {
   dropGuestDirs()

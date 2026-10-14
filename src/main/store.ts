@@ -7,6 +7,11 @@ import { isGuestDir } from './collab'
 export const defaultSettings: Settings = {
   theme: 'system',
   colorTheme: '',
+  extDevMode: false,
+  extDisabled: [],
+  extSettings: {},
+  extMedia: {},
+  compilers: {},
   editorFontSize: 14,
   editorFontFamily: '"SF Mono", "JetBrains Mono", Menlo, Monaco, monospace',
   lineWrapping: true,

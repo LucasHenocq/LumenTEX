@@ -1,4 +1,4 @@
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type CompletionSource } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import {
   bracketMatching,
@@ -29,7 +29,9 @@ import type { Settings } from '../../../shared/types'
 import { bibHighlight, bibLanguage, latexHighlight, latexLanguage } from '../latex/language'
 import { store } from '../store'
 import { latexCompletionSources } from './complete'
-import { fileFacet, frenchPhrases, latexFolding, latexLinter, mathHover, wrapSelection } from './features'
+import { diagnosticsLinter, fileFacet, frenchPhrases, latexFolding, latexLinter, mathHover, wrapSelection } from './features'
+import { isRootDocument } from '../latex/analysis'
+import { languageOf, registerLanguage } from '../lib/languages'
 import { leanLanguage } from './lean'
 import { proofGutter } from './proofs'
 
@@ -65,6 +67,40 @@ const attrsC = new Compartment()
 const mathC = new Compartment()
 const collabC = new Compartment()
 const proofC = new Compartment()
+/** Langage du fichier, autocomplétion, et apports des extensions (changent quand une extension se charge) */
+const langC = new Compartment()
+const completeC = new Compartment()
+const extC = new Compartment()
+
+/** Apports des extensions à l'éditeur, selon le fichier (renseigné par l'hôte des extensions) */
+export const editorContributions = {
+  completion: (_path: string): CompletionSource[] => [],
+  extensions: (_path: string): Extension[] => []
+}
+
+// Langages de Lumen TeX, enregistrés comme ceux des extensions
+registerLanguage({
+  id: 'latex',
+  name: 'LaTeX',
+  extensions: ['.tex', '.ltx', '.sty', '.cls', '.dtx', '.tikz'],
+  editor: [latexLanguage, syntaxHighlighting(latexHighlight), latexFolding, latexLinter],
+  completion: latexCompletionSources,
+  isMain: isRootDocument,
+  owner: 'lumen'
+})
+registerLanguage({ id: 'bibtex', name: 'BibTeX', extensions: ['.bib'], editor: [bibLanguage, syntaxHighlighting(bibHighlight)], owner: 'lumen' })
+registerLanguage({ id: 'lean', name: 'Lean', extensions: ['.lean'], editor: leanLanguage, autoCompile: false, owner: 'lumen' })
+
+function completionFor(path: string): Extension {
+  const sources = [...(languageOf(path)?.completion ?? []), ...editorContributions.completion(path)]
+  return autocompletion({
+    override: sources.length ? sources : undefined,
+    activateOnTyping: true,
+    icons: false,
+    closeOnBlur: true,
+    maxRenderedOptions: 80
+  })
+}
 
 const isTexPath = (p: string): boolean => /\.(tex|ltx)$/i.test(p)
 /** Coches Lean des preuves : documents LaTeX, une fois Lean installé */
@@ -93,7 +129,10 @@ export function reconfigureAll(): void {
       wrapC.reconfigure(e.wrap),
       attrsC.reconfigure(e.attrs),
       mathC.reconfigure(tex ? e.math : []),
-      proofC.reconfigure(activePath ? proofExt(activePath) : [])
+      proofC.reconfigure(activePath ? proofExt(activePath) : []),
+      langC.reconfigure(activePath ? languageFor(activePath) : []),
+      completeC.reconfigure(completionFor(activePath ?? '')),
+      extC.reconfigure(activePath ? editorContributions.extensions(activePath) : [])
     ]
   })
 }
@@ -153,12 +192,7 @@ const customKeys: KeyBinding[] = [
 ]
 
 function languageFor(path: string): Extension {
-  if (/\.(tex|sty|cls|ltx|dtx|tikz)$/i.test(path)) {
-    return [latexLanguage, syntaxHighlighting(latexHighlight), latexFolding, latexLinter]
-  }
-  if (/\.bib$/i.test(path)) return [bibLanguage, syntaxHighlighting(bibHighlight)]
-  if (/\.lean$/i.test(path)) return [leanLanguage, lintGutter()]
-  return []
+  return languageOf(path)?.editor ?? []
 }
 
 export function createState(path: string, text: string): EditorState {
@@ -184,13 +218,7 @@ export function createState(path: string, text: string): EditorState {
       indentUnit.of('  '),
       bracketMatching(),
       closeBrackets(),
-      autocompletion({
-        override: isTex ? latexCompletionSources : undefined,
-        activateOnTyping: true,
-        icons: false,
-        closeOnBlur: true,
-        maxRenderedOptions: 80
-      }),
+      completeC.of(completionFor(path)),
       rectangularSelection(),
       crosshairCursor(),
       highlightActiveLine(),
@@ -207,8 +235,10 @@ export function createState(path: string, text: string): EditorState {
         ...lintKeymap,
         indentWithTab
       ]),
-      languageFor(path),
-      isTex ? lintGutter() : [],
+      langC.of(languageFor(path)),
+      diagnosticsLinter,
+      lintGutter(),
+      extC.of(editorContributions.extensions(path)),
       mathC.of(isTex ? s.math : []),
       wrapC.of(s.wrap),
       attrsC.of(s.attrs),

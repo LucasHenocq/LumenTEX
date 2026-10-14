@@ -1,13 +1,17 @@
 import { app, net } from 'electron'
+import crypto from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import type { ExtensionInfo, TemplateFile } from '../shared/types'
+import type { ExtensionInfo, ExtensionSetting, TemplateFile } from '../shared/types'
 import { isNewer } from './macUpdate'
 import { tar } from './tar'
 
-// Extensions sans code : un dossier avec un manifeste lumen-extension.json (bouts de LaTeX, environnements, symboles,
-// modèles de projet, thèmes de couleurs), installé dans <données de l'app>/extensions/<id>.
+// Extensions : un dossier avec un manifeste lumen-extension.json (bouts de LaTeX, environnements, symboles, modèles de
+// projet, thèmes de couleurs, et code), installé dans <données de l'app>/extensions/<id>.
+// Confiance : une extension installée depuis le catalogue est « vérifiée » (relue avant d'y entrer) tant que ses fichiers
+// gardent l'empreinte notée à l'installation (.verified.json, recalculée à chaque lecture) ; depuis un dossier, elle ne
+// l'est pas. Mode développeur : une extension peut être reliée à son dossier (fichier .lumen-link) au lieu d'être copiée.
 // Catalogue officiel : le dépôt GitHub LumenTEX-extensions, une extension par dossier extensions/<id>. L'app télécharge
 // l'archive du dépôt (codeload, sans l'API GitHub et sa limite de requêtes) : pas de serveur, pas de liste à tenir à jour.
 // LUMEN_CATALOG : autre adresse de l'archive (tests)
@@ -150,8 +154,101 @@ export function readExtension(folder: string): ExtensionInfo {
           )
         return { name: str(t.name, 100), light: vars(t.light), dark: vars(t.dark) }
       })
-      .filter((t) => t.name && (Object.keys(t.light).length || Object.keys(t.dark).length))
+      .filter((t) => t.name && (Object.keys(t.light).length || Object.keys(t.dark).length)),
+    main: codeFile(m.main, inside),
+    node: codeFile(m.node, inside),
+    permissions: (() => {
+      const p = obj(m.permissions)
+      return {
+        network: arr(p.network)
+          .map((d) => str(d, 200).toLowerCase())
+          .filter((d) => /^[a-z0-9.-]+$/.test(d)),
+        microphone: p.microphone === true,
+        camera: p.camera === true,
+        session: p.session === true
+      }
+    })(),
+    settings: arr(m.settings)
+      .map(obj)
+      .map((s): ExtensionSetting => {
+        const type = (['toggle', 'text', 'number', 'select'] as const).find((t) => t === s.type) ?? 'text'
+        const options = arr(s.options).map((o) => str(o, 200))
+        const fallback = type === 'toggle' ? false : type === 'number' ? 0 : type === 'select' ? (options[0] ?? '') : ''
+        const def = typeof s.default === typeof fallback ? (s.default as string | number | boolean) : fallback
+        return { id: str(s.id, 60), label: str(s.label, 200) || str(s.id, 60), type, options, default: def, description: str(s.description) }
+      })
+      .filter((s) => /^[\w-]+$/.test(s.id)),
+    languages: arr(m.languages)
+      .map(obj)
+      .map((l) => ({
+        id: str(l.id, 40),
+        name: str(l.name, 100) || str(l.id, 40),
+        extensions: arr(l.extensions)
+          .map((e) => str(e, 20).toLowerCase())
+          .filter((e) => /^\.[a-z0-9]+$/.test(e))
+      }))
+      .filter((l) => /^[a-z0-9-]+$/.test(l.id) && l.extensions.length),
+    // Icône SVG en data URL : affichée comme image, elle ne peut pas exécuter de script
+    icon: (() => {
+      const rel = str(m.icon)
+      if (!rel || !/\.svg$/i.test(rel)) return ''
+      const file = inside(rel)
+      return fs.existsSync(file) && fs.statSync(file).size < 100_000 ? 'data:image/svg+xml;base64,' + fs.readFileSync(file).toString('base64') : ''
+    })(),
+    trust: 'unverified',
+    linked: ''
   }
+}
+
+/** Fichier de code déclaré dans le manifeste (module JavaScript), qui doit exister dans l'extension */
+function codeFile(v: unknown, inside: (rel: string) => string): string {
+  const rel = str(v, 200).replace(/^\.\//, '')
+  if (!rel) return ''
+  if (!/\.m?js$/i.test(rel)) throw new Error(`Le code « ${rel} » doit être un fichier .js ou .mjs.`)
+  if (!fs.existsSync(inside(rel))) throw new Error(`Le fichier « ${rel} » déclaré dans ${MANIFEST} est introuvable.`)
+  return rel
+}
+
+/** Empreinte de tous les fichiers d'une extension (chemins et contenus) */
+function hashFolder(root: string): string {
+  const h = crypto.createHash('sha256')
+  const walk = (dir: string): void => {
+    for (const name of fs.readdirSync(dir).sort()) {
+      const abs = path.join(dir, name)
+      const st = fs.lstatSync(abs)
+      if (st.isSymbolicLink() || name === '.git') continue
+      if (st.isDirectory()) walk(abs)
+      else {
+        h.update(path.relative(root, abs).split(path.sep).join('/') + '\0')
+        h.update(fs.readFileSync(abs))
+        h.update('\0')
+      }
+    }
+  }
+  walk(root)
+  return h.digest('hex')
+}
+
+const verifiedFile = (): string => path.join(extDir(), '.verified.json')
+function verifiedHashes(): Record<string, string> {
+  try {
+    return obj(JSON.parse(fs.readFileSync(verifiedFile(), 'utf8'))) as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+function setVerified(id: string, hash: string | null): void {
+  const all = verifiedHashes()
+  if (hash) all[id] = hash
+  else delete all[id]
+  fs.mkdirSync(extDir(), { recursive: true })
+  fs.writeFileSync(verifiedFile(), JSON.stringify(all, null, 2))
+}
+
+/** Dossier réel d'une extension installée (celui de l'auteur, si elle y est reliée) */
+function realFolder(dir: string): string {
+  const link = path.join(dir, '.lumen-link')
+  return fs.existsSync(link) ? fs.readFileSync(link, 'utf8').trim() : dir
 }
 
 /** Extensions dans un dossier (une par sous-dossier) ; celles qui ne sont pas valables sont ignorées */
@@ -162,7 +259,8 @@ function listIn(root: string): { ext: ExtensionInfo; folder: string }[] {
     .filter((d) => d.isDirectory())
     .flatMap((d) => {
       try {
-        return [{ ext: readExtension(path.join(root, d.name)), folder: path.join(root, d.name) }]
+        const folder = realFolder(path.join(root, d.name))
+        return [{ ext: readExtension(folder), folder }]
       } catch {
         return []
       }
@@ -170,21 +268,51 @@ function listIn(root: string): { ext: ExtensionInfo; folder: string }[] {
     .sort((a, b) => a.ext.name.localeCompare(b.ext.name))
 }
 
-export const installedExtensions = (): ExtensionInfo[] => listIn(extDir()).map((e) => e.ext)
+// Extensions installées, avec leur dossier : relu à chaque liste demandée par la fenêtre (démarrage, installation)
+let installed = new Map<string, { ext: ExtensionInfo; folder: string }>()
 
-/** Copie une extension dans le dossier des extensions (remplace l'ancienne version) */
-function install(folder: string): ExtensionInfo {
+export function installedExtensions(): ExtensionInfo[] {
+  const hashes = verifiedHashes()
+  const list = listIn(extDir()).map(({ ext, folder }) => {
+    const linked = fs.existsSync(path.join(extDir(), ext.id, '.lumen-link')) ? folder : ''
+    const known = hashes[ext.id]
+    const trust: ExtensionInfo['trust'] = linked || !known ? 'unverified' : hashFolder(folder) === known ? 'verified' : 'modified'
+    return { ext: { ...ext, trust, linked }, folder }
+  })
+  installed = new Map(list.map((e) => [e.ext.id, e]))
+  return list.map((e) => e.ext)
+}
+
+/** Extension installée et son dossier (code, fichiers servis à la fenêtre) */
+export const installedExtension = (id: string): { ext: ExtensionInfo; folder: string } | undefined => installed.get(id)
+
+/** Copie une extension dans le dossier des extensions (remplace l'ancienne version) ; du catalogue : notée vérifiée */
+function install(folder: string, verified: boolean): ExtensionInfo {
   const ext = readExtension(folder)
   const dest = path.join(extDir(), ext.id)
   fs.rmSync(dest, { recursive: true, force: true })
   fs.cpSync(folder, dest, { recursive: true, filter: (src) => path.basename(src) !== '.git' && !fs.lstatSync(src).isSymbolicLink() })
+  setVerified(ext.id, verified ? hashFolder(dest) : null)
   return ext
 }
 
-export const installExtensionFolder = (folder: string): ExtensionInfo => install(folder)
+export const installExtensionFolder = (folder: string): ExtensionInfo => install(folder, false)
+
+/** Mode développeur : extension reliée à son dossier, sans copie (ses modifications sont prises au rechargement) */
+export function linkExtensionFolder(folder: string): ExtensionInfo {
+  const ext = readExtension(folder)
+  const dest = path.join(extDir(), ext.id)
+  fs.rmSync(dest, { recursive: true, force: true })
+  fs.mkdirSync(dest, { recursive: true })
+  fs.writeFileSync(path.join(dest, '.lumen-link'), path.resolve(folder))
+  setVerified(ext.id, null)
+  return ext
+}
 
 export function uninstallExtension(id: string): void {
-  if (ID.test(id)) fs.rmSync(path.join(extDir(), id), { recursive: true, force: true })
+  if (!ID.test(id)) return
+  fs.rmSync(path.join(extDir(), id), { recursive: true, force: true })
+  setVerified(id, null)
 }
 
 // Dernier catalogue téléchargé : dossier temporaire de chaque extension, pour l'installer ensuite
@@ -203,7 +331,7 @@ export async function fetchCatalog(): Promise<ExtensionInfo[]> {
     const list = top ? listIn(path.join(tmp, top.name, 'extensions')) : []
     if (catalog) fs.rmSync(catalog.tmp, { recursive: true, force: true })
     catalog = { tmp, folders: new Map(list.map((e) => [e.ext.id, e.folder])) }
-    return list.map((e) => e.ext)
+    return list.map((e) => ({ ...e.ext, trust: 'verified' as const }))
   } catch (e) {
     fs.rmSync(tmp, { recursive: true, force: true })
     throw e
@@ -213,7 +341,7 @@ export async function fetchCatalog(): Promise<ExtensionInfo[]> {
 export function installFromCatalog(id: string): ExtensionInfo {
   const folder = catalog?.folders.get(id)
   if (!folder) throw new Error('Cette extension n’est plus dans le catalogue. Rouvrez la liste pour la recharger.')
-  return install(folder)
+  return install(folder, true)
 }
 
 /** Fermeture de l'app : efface le catalogue temporaire */

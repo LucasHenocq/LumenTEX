@@ -5,6 +5,7 @@ import { emit } from '../../lib/bus'
 import { store, toast, updateSettings, useApp } from '../../store'
 import { ENGINES } from '../Copilot'
 import { themeKey } from '../../lib/extensions'
+import { allLanguages, availabilityOf, compilerFor, compilersFor, recheckCompilers } from '../../lib/languages'
 import { ExtensionsList } from '../panels/ExtensionsPanel'
 import TectonicSetup from '../TectonicSetup'
 import LeanSetup from '../LeanSetup'
@@ -112,6 +113,48 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
       </div>
       <div className="setting-control">{children}</div>
     </div>
+  )
+}
+
+/** Un choix par langage qui a au moins un compilateur ; ceux indisponibles sont grisés, avec la raison */
+function CompilerRows(): React.JSX.Element {
+  useApp((st) => st.compilersVersion)
+  const chosen = useApp((st) => st.settings.compilers)
+  useEffect(() => void recheckCompilers(), [])
+  return (
+    <>
+      {allLanguages()
+        .filter((l) => compilersFor(l.id).length)
+        .map((l) => {
+          const list = compilersFor(l.id)
+          const current = compilerFor(l.id)
+          const unavailable = list.filter((c) => availabilityOf(c)?.ok === false)
+          return (
+            <Row
+              key={l.id}
+              label={`Compilateur ${l.name}`}
+              hint={unavailable.map((c) => `${c.name} : ${availabilityOf(c)?.reason ?? 'indisponible'}`).join(' · ') || undefined}
+            >
+              <select
+                className="input"
+                value={current?.id ?? chosen?.[l.id] ?? ''}
+                onChange={(e) => void updateSettings({ compilers: { ...store.get().settings.compilers, [l.id]: e.target.value } })}
+              >
+                {list.map((c) => {
+                  const a = availabilityOf(c)
+                  return (
+                    <option key={c.id} value={c.id} disabled={a?.ok === false}>
+                      {c.name}
+                      {a?.version ? ` ${a.version}` : ''}
+                      {a?.ok === false ? ' (indisponible)' : ''}
+                    </option>
+                  )
+                })}
+              </select>
+            </Row>
+          )
+        })}
+    </>
   )
 }
 
@@ -270,6 +313,7 @@ export default function SettingsModal(): React.JSX.Element {
           )}
           {section === 'compile' && (
             <>
+              <CompilerRows />
               <Row label="Compilation automatique (live)" hint="Recompile pendant la saisie et enregistre automatiquement">
                 <Toggle value={s.autoCompile} onChange={(v) => set({ autoCompile: v })} />
               </Row>

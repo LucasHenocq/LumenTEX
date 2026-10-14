@@ -287,6 +287,11 @@ function InSession({ c }: { c: CollabState }): React.JSX.Element {
         {c.people.map((p) => (
           <div key={p.id} className="collab-person">
             <span className="collab-dot" style={{ background: p.color }} /> {p.name}
+            {p.dev.length > 0 && (
+              <span className="ext-badge warn" title={`Mode développeur : ${p.dev.map((d) => `${d.name} ${d.version}`).join(', ')}`}>
+                🧩 Mode développeur
+              </span>
+            )}
             {p.file && <small>{p.file}</small>}
             {p.uid && <PersonRight uid={p.uid} c={c} />}
           </div>

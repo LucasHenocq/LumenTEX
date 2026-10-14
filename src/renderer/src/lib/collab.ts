@@ -9,6 +9,7 @@ import * as Y from 'yjs'
 import { docs, getActivePath, hooks, markSaved, reconfigureCollab } from '../editor/setup'
 import type { ChatMessage, FileRight, UserRight } from '../../../shared/types'
 import { NO_RULES, store, toast, updateSettings, type CollabState } from '../store'
+import { ask } from './dialog'
 import { closeProject, closeTab, followMove, isOwnWrite, openProject, refreshFiles, saveAll, TEXT_FILE, writeFromSession } from './actions'
 
 // Édition à plusieurs en pair-à-pair. Un document Yjs partagé contient tous les fichiers du projet :
@@ -20,6 +21,9 @@ import { closeProject, closeTab, followMove, isOwnWrite, openProject, refreshFil
 const api = window.api
 const MSG_SYNC = 0
 const MSG_AWARENESS = 1
+/** Voie des extensions : [type, identifiant du message, extension, de (uid), à (uid ou vide = tous), données] */
+const MSG_EXT = 2
+const MAX_EXT_MESSAGE = 1024 * 1024
 /**
  * Origines des transactions : reçu d'un autre participant ({ peer }), lu sur le disque, état initial.
  * Tout ce qui est reçu est retransmis aux autres participants (sauf à l'expéditeur) : si deux personnes
@@ -292,9 +296,97 @@ function receive(peer: string, data: Uint8Array): void {
       }
       s.peerClients.set(peer, ids)
       awarenessProtocol.applyAwarenessUpdate(s.awareness, update, { peer } satisfies Remote)
+    } else if (type === MSG_EXT) {
+      const id = decoding.readVarString(dec)
+      // Déjà reçu par un autre chemin (relais) : ignoré
+      if (seenExt.has(id)) return
+      seenExt.add(id)
+      if (seenExt.size > 2000) seenExt.delete(seenExt.values().next().value!)
+      const ext = decoding.readVarString(dec)
+      const from = decoding.readVarString(dec)
+      const to = decoding.readVarString(dec)
+      const binary = decoding.readVarUint(dec) === 1
+      const payload = decoding.readVarUint8Array(dec)
+      // Retransmis aux autres (sauf l'expéditeur) s'il ne m'est pas seul destiné
+      if (to !== myUid()) send(reEncode(data), undefined, peer)
+      if (!to || to === myUid()) {
+        const value = binary ? payload : JSON.parse(new TextDecoder().decode(payload))
+        extHandlers.forEach((h) => h(ext, from, value))
+      }
     }
   } catch {
     /* message illisible (version différente de l'app) : ignoré */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Voie des extensions (lumen.session) : messages d'une extension à la même extension chez les autres
+// ---------------------------------------------------------------------------
+
+const seenExt = new Set<string>()
+const extHandlers = new Set<(ext: string, from: string, data: unknown) => void>()
+const reEncode = (data: Uint8Array): encoding.Encoder => {
+  const enc = encoding.createEncoder()
+  encoding.writeUint8Array(enc, data)
+  return enc
+}
+
+export function onExtensionMessage(h: (ext: string, from: string, data: unknown) => void): () => void {
+  extHandlers.add(h)
+  return () => extHandlers.delete(h)
+}
+
+/** Données JSON ou octets (Uint8Array) ; to : identifiant d'une personne, sinon tout le monde */
+export function sendExtensionMessage(ext: string, data: unknown, to?: string): void {
+  if (!s) throw new Error('Aucune session partagée en cours')
+  const binary = data instanceof Uint8Array
+  const payload = binary ? data : new TextEncoder().encode(JSON.stringify(data ?? null))
+  if (payload.byteLength > MAX_EXT_MESSAGE) throw new Error('Message trop volumineux (1 Mo au plus)')
+  const id = crypto.randomUUID()
+  seenExt.add(id)
+  const enc = encoding.createEncoder()
+  encoding.writeVarUint(enc, MSG_EXT)
+  encoding.writeVarString(enc, id)
+  encoding.writeVarString(enc, ext)
+  encoding.writeVarString(enc, myUid())
+  encoding.writeVarString(enc, to ?? '')
+  encoding.writeVarUint(enc, binary ? 1 : 0)
+  encoding.writeVarUint8Array(enc, payload)
+  send(enc)
+}
+
+export function collabMe(): { id: string; name: string; color: string } | null {
+  const user = s?.awareness.getLocalState()?.user as { name: string; color: string } | undefined
+  return s && user ? { id: myUid(), name: user.name, color: user.color } : null
+}
+
+export const collabPeople = (): { id: string; name: string; color: string }[] =>
+  store.get().collab.people.filter((p) => p.uid).map((p) => ({ id: p.uid, name: p.name, color: p.color }))
+
+/** Mode développeur : extensions non vérifiées qui tournent, annoncées aux autres participants */
+let devExtensions: { name: string; version: string }[] = []
+export function setDevExtensions(list: { name: string; version: string }[]): void {
+  devExtensions = list
+  s?.awareness.setLocalStateField('dev', list)
+}
+
+/** Personnes en mode développeur déjà présentées (une fois par session) */
+const devAsked = new Set<string>()
+async function warnDevelopers(people: CollabState['people']): Promise<void> {
+  for (const p of people) {
+    if (!p.dev.length || !p.uid || devAsked.has(p.uid) || !s) continue
+    devAsked.add(p.uid)
+    const host = amHost()
+    const list = p.dev.map((d) => `${d.name} ${d.version}`).join(', ')
+    const a = await ask({
+      title: 'Mode développeur',
+      message: `${p.name} est en mode développeur, avec des extensions non vérifiées : ${list}.`,
+      detail:
+        'Elles peuvent modifier les fichiers de la session (dans la limite des droits de cette personne) et échanger des données avec la même extension chez vous, si vous l’avez. Elles n’ont aucun accès à votre ordinateur.',
+      buttons: host ? ['Quitter la session', `Lecture seule pour ${p.name}`, 'Continuer'] : ['Quitter la session', 'Continuer']
+    })
+    if (a.button === 0) return void stopSession({ forget: false })
+    if (host && a.button === 1) setUserRight(p.uid, 'ro')
   }
 }
 
@@ -308,7 +400,8 @@ function refreshPeople(): void {
       name: String(st.user.name),
       color: String(st.user.color),
       file: (st.file as string | null) ?? null,
-      typing: !!st.typing
+      typing: !!st.typing,
+      dev: Array.isArray(st.dev) ? (st.dev as { name: string; version: string }[]).slice(0, 20) : []
     }))
   // Arrivées et départs, affichés dans la discussion (pas pour ceux déjà là à notre arrivée)
   const before = store.get().collab.people
@@ -319,6 +412,7 @@ function refreshPeople(): void {
   }
   setCollab({ people, events })
   welcome(people.map((p) => p.uid).filter(Boolean))
+  void warnDevelopers(people)
 }
 
 // ---------------------------------------------------------------------------
@@ -656,6 +750,8 @@ async function begin(code: string, root: string | null, doc: Y.Doc, role: Collab
   const color = COLORS[doc.clientID % COLORS.length]
   awareness.setLocalStateField('user', { name, color, colorLight: color + '33', uid: myUid() })
   awareness.setLocalStateField('file', getActivePath())
+  awareness.setLocalStateField('dev', devExtensions)
+  devAsked.clear()
   const sess: Session = {
     root,
     code,

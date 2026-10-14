@@ -2,7 +2,10 @@ import type { ExtensionInfo } from '../../../shared/types'
 import { store } from '../store'
 
 /** Extensions installées et compatibles avec cette version de Lumen TeX */
-export const extensions = (): ExtensionInfo[] => store.get().extensions.filter((e) => e.compatible)
+export const extensions = (): ExtensionInfo[] => {
+  const off = store.get().settings.extDisabled ?? []
+  return store.get().extensions.filter((e) => e.compatible && !off.includes(e.id))
+}
 
 export async function loadExtensions(): Promise<void> {
   store.set({ extensions: await window.api.extList() })

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' blob: data:"
+      content="default-src 'self'; script-src 'self' lumen-ext://app 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' lumen-ext://app; img-src 'self' data: blob: lumen-ext://app; font-src 'self' data: lumen-ext://app; worker-src 'self' blob: lumen-ext://app; connect-src 'self' blob: data: lumen-ext://app; media-src 'self' blob: mediastream:; frame-src lumen-ext:"
     />
     <title>Lumen TeX</title>
   </head>

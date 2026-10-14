@@ -35,6 +35,16 @@ export interface Settings {
   theme: ThemeMode
   /** Thème de couleurs d'une extension (« id/nom »), vide = celui de Lumen TeX */
   colorTheme: string
+  /** Mode développeur : toutes les extensions fonctionnent comme si elles étaient vérifiées */
+  extDevMode: boolean
+  /** Extensions désactivées (identifiants) */
+  extDisabled: string[]
+  /** Valeurs des réglages de chaque extension */
+  extSettings: Record<string, Record<string, unknown>>
+  /** Micro et caméra : réponse de l'utilisateur pour chaque extension non vérifiée */
+  extMedia: Record<string, boolean>
+  /** Compilateur choisi pour chaque langage (identifiant du langage → du compilateur) */
+  compilers: Record<string, string>
   editorFontSize: number
   editorFontFamily: string
   lineWrapping: boolean
@@ -147,6 +157,11 @@ export interface Diagnostic {
   line?: number
   context?: string
   kind?: 'badbox' | 'reference' | 'citation' | 'general'
+  /** Extension qui l'a signalé (absent : compilation) */
+  source?: string
+  /** Position exacte dans le fichier (extensions), sinon la ligne entière */
+  from?: number
+  to?: number
 }
 
 export interface CompileResult {
@@ -258,6 +273,47 @@ export interface ExtensionInfo {
   templates: { name: string; description: string; files: TemplateFile[] }[]
   /** Thèmes de couleurs : variables CSS du thème clair et/ou sombre */
   themes: { name: string; light: Record<string, string>; dark: Record<string, string> }[]
+  /** Code (module JavaScript) : chargé dans la fenêtre si l'extension est vérifiée, isolé sinon ; vide = sans code */
+  main: string
+  /** Partie Node.js (processus séparé) : extensions vérifiées, ou mode développeur */
+  node: string
+  /** Ce que l'extension déclare utiliser (affiché à l'installation) */
+  permissions: ExtensionPermissions
+  /** Réglages de l'extension : formulaire affiché par Lumen TeX */
+  settings: ExtensionSetting[]
+  /** Langages (fichiers reconnus, pouvant être compilés par un compilateur d'extension) */
+  languages: { id: string; name: string; extensions: string[] }[]
+  /** Icône SVG (data URL), vide = pièce de puzzle */
+  icon: string
+  /** verified : du catalogue et inchangée ; modified : changée depuis son installation ; unverified : depuis un dossier */
+  trust: 'verified' | 'modified' | 'unverified'
+  /** Dossier relié (mode développeur : installée sans copie), vide sinon */
+  linked: string
+}
+
+export interface ExtensionPermissions {
+  /** Sites joignables (domaines) ; une extension vérifiée n'est pas limitée */
+  network: string[]
+  microphone: boolean
+  camera: boolean
+  /** Échanges avec les autres participants d'une session */
+  session: boolean
+}
+
+export interface ExtensionSetting {
+  id: string
+  label: string
+  type: 'toggle' | 'text' | 'number' | 'select'
+  options: string[]
+  default: string | number | boolean
+  description: string
+}
+
+/** Réponse d'une requête Internet faite pour une extension */
+export interface ExtensionFetchResult {
+  status: number
+  headers: Record<string, string>
+  body: Uint8Array
 }
 
 export interface SearchMatch {

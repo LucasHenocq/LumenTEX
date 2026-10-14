@@ -6,6 +6,17 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.5.0',
+    date: '2026-10-14',
+    items: [
+      'Les extensions peuvent contenir du code : commandes, panneaux, autocomplétion, erreurs signalées dans l’éditeur, nouveaux compilateurs et nouveaux langages, échanges entre les participants d’une session.',
+      'Celles du catalogue sont relues avant d’y entrer et marquées « Vérifiée ». Celles installées depuis un dossier fonctionnent isolées : elles ne voient que le projet ouvert, n’accèdent qu’aux sites qu’elles déclarent, et sont arrêtées pendant les sessions partagées. Avant d’installer une extension avec code, Lumen TeX montre ce qu’elle pourra faire.',
+      'Chaque extension a son interrupteur et ses réglages dans le panneau Extensions ; ses messages et ses erreurs apparaissent dans un onglet « Extensions » du journal.',
+      'Compilateurs : quand une extension en ajoute un pour le langage du document, un menu à côté de « Compiler » permet de choisir. Réglages → Compilation les liste tous, avec la raison quand l’un d’eux n’est pas disponible.',
+      'Mode développeur (Réglages → Extensions) : pour écrire et tester une extension, toutes fonctionnent comme si elles étaient vérifiées. Dans une session partagée, les autres participants en sont prévenus et peuvent quitter la session ; le chef peut aussi mettre la personne en lecture seule.'
+    ]
+  },
+  {
     version: '1.4.1',
     date: '2026-10-14',
     items: [

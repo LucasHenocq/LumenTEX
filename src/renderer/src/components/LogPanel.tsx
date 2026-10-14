@@ -1,11 +1,11 @@
 import { AlertCircle, AlertTriangle, Copy, Info, Sparkles, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import type { Diagnostic } from '../../../shared/types'
+import type { Diagnostic, ExtensionInfo } from '../../../shared/types'
 import { textOf } from '../editor/setup'
 import { openFile } from '../lib/actions'
 import { emit } from '../lib/bus'
 import { contents } from '../lib/projectIndex'
-import { store, toast, useApp } from '../store'
+import { store, toast, useApp, type ExtLog } from '../store'
 import { kb } from '../lib/keys'
 
 const ICON = { error: AlertCircle, warning: AlertTriangle, info: Info }
@@ -47,10 +47,19 @@ function aiPrompt(d: Diagnostic): string {
   ].join('\n')
 }
 
+/** Journal des extensions : heure, extension, message */
+function extLogText(logs: ExtLog[], exts: ExtensionInfo[]): string {
+  return logs
+    .map((l) => `${new Date(l.ts).toLocaleTimeString('fr-FR')}  [${exts.find((e) => e.id === l.extId)?.name ?? l.extId}]  ${l.text}`)
+    .join('\n')
+}
+
 export default function LogPanel(): React.JSX.Element {
   const diagnostics = useApp((s) => s.diagnostics)
   const result = useApp((s) => s.result)
-  const [tab, setTab] = useState<'problems' | 'log' | 'output'>('problems')
+  const extLogs = useApp((s) => s.extLogs)
+  const extNames = useApp((s) => s.extensions)
+  const [tab, setTab] = useState<'problems' | 'log' | 'output' | 'extensions'>(() => (store.get().extLogs.some((l) => l.level === 'error') && !store.get().diagnostics.length ? 'extensions' : 'problems'))
   const [filters, setFilters] = useState({ error: true, warning: true, info: false })
 
   const counts = useMemo(
@@ -81,6 +90,11 @@ export default function LogPanel(): React.JSX.Element {
           <button className={tab === 'output' ? 'on' : ''} onClick={() => setTab('output')}>
             Sortie
           </button>
+          {extLogs.length > 0 && (
+            <button className={tab === 'extensions' ? 'on' : ''} onClick={() => setTab('extensions')}>
+              Extensions
+            </button>
+          )}
         </div>
         {tab === 'problems' && (
           <div className="log-filters">
@@ -96,7 +110,11 @@ export default function LogPanel(): React.JSX.Element {
         )}
         <div className="log-actions">
           {tab !== 'problems' && (
-            <button className="icon-btn subtle" title="Copier" onClick={() => copy(tab === 'log' ? (result?.log ?? '') : (result?.output ?? ''))}>
+            <button
+              className="icon-btn subtle"
+              title="Copier"
+              onClick={() => copy(tab === 'log' ? (result?.log ?? '') : tab === 'output' ? (result?.output ?? '') : extLogText(extLogs, extNames))}
+            >
               <Copy size={14} />
             </button>
           )}
@@ -151,6 +169,15 @@ export default function LogPanel(): React.JSX.Element {
           ))}
         {tab === 'log' && <pre className="raw-log">{result?.log || 'Pas de journal.'}</pre>}
         {tab === 'output' && <pre className="raw-log">{result?.output || 'Pas de sortie.'}</pre>}
+        {tab === 'extensions' && (
+          <pre className="raw-log">
+            {extLogs.map((l, i) => (
+              <div key={i} className={`ext-log ${l.level}`}>
+                {extLogText([l], extNames)}
+              </div>
+            ))}
+          </pre>
+        )}
       </div>
     </div>
   )

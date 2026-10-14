@@ -1,3 +1,4 @@
+import { canBeMain } from '../../lib/languages'
 import { ChevronRight, EyeOff, FilePlus, FolderPlus, Import, Lock, RefreshCw, ChevronsDownUp } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CONVERTIBLE } from '../../../../shared/convert'
@@ -149,7 +150,7 @@ export default function FileTree(): React.JSX.Element {
     ]
     if (node) {
       items.push({ type: 'separator' } as never)
-      if (!node.isDir && /\.tex$/i.test(node.path) && node.path !== mainFile) items.push({ id: 'main', label: 'Définir comme fichier principal' })
+      if (!node.isDir && canBeMain(node.path) && node.path !== mainFile) items.push({ id: 'main', label: 'Définir comme fichier principal' })
       items.push({ id: 'rename', label: 'Renommer…', enabled: add && writable(node.path, node.isDir) }, { id: 'copy-path', label: 'Copier le chemin relatif' })
       if (!node.isDir && /\.(png|jpe?g|pdf|eps|svg)$/i.test(node.path)) items.push({ id: 'insert-graphic', label: 'Insérer \\includegraphics' })
       if (!node.isDir && /\.tex$/i.test(node.path) && node.path !== mainFile) items.push({ id: 'insert-input', label: 'Insérer \\input' })

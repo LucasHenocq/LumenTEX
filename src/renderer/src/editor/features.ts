@@ -92,7 +92,15 @@ function compileDiagnostics(state: EditorState): CMDiagnostic[] {
   const file = state.facet(fileFacet)
   const out: CMDiagnostic[] = []
   for (const d of store.get().diagnostics) {
-    if (d.file !== file || !d.line || d.line > state.doc.lines) continue
+    if (d.file !== file) continue
+    // Position exacte (extensions)
+    if (d.from !== undefined && d.to !== undefined) {
+      const len = state.doc.length
+      const from = Math.min(Math.max(0, d.from), len)
+      out.push({ from, to: Math.min(Math.max(from, d.to), len), severity: d.severity, message: d.message, source: d.source })
+      continue
+    }
+    if (!d.line || d.line > state.doc.lines) continue
     const line = state.doc.line(d.line)
     let from = line.from
     let to = line.to
@@ -113,7 +121,7 @@ function compileDiagnostics(state: EditorState): CMDiagnostic[] {
       to: Math.max(to, from),
       severity: d.severity === 'info' ? 'info' : d.severity,
       message: d.message + (d.context ? `\n${d.context}` : ''),
-      source: 'TeX'
+      source: d.source ?? 'TeX'
     })
   }
   return out
@@ -122,10 +130,14 @@ function compileDiagnostics(state: EditorState): CMDiagnostic[] {
 /** Effet signalant que les diagnostics de compilation ont changé */
 export const refreshLint = StateEffect.define<null>()
 
-export const latexLinter = linter((view) => [...compileDiagnostics(view.state), ...staticLint(view.state)], {
+/** Diagnostics de la compilation et des extensions : tous les langages */
+export const diagnosticsLinter = linter((view) => compileDiagnostics(view.state), {
   delay: 600,
   needsRefresh: (u) => u.transactions.some((tr) => tr.effects.some((e) => e.is(refreshLint)))
 })
+
+/** Vérifications propres à LaTeX (environnements non fermés, paquets inutiles avec XeLaTeX…) */
+export const latexLinter = linter((view) => staticLint(view.state), { delay: 600 })
 
 // ---------------------------------------------------------------------------
 // Repliage : environnements et sections

@@ -6,6 +6,7 @@ import type {
   ConvertEvent,
   ConvertOptions,
   ConvertSource,
+  ExtensionFetchResult,
   ExtensionInfo,
   CompileResult,
   ContextMenuItem,
@@ -58,7 +59,19 @@ const api = {
   /** Catalogue officiel ; null si GitHub est injoignable */
   extCatalog: (): Promise<ExtensionInfo[] | null> => invoke('ext:catalog'),
   extInstall: (id: string): Promise<ExtensionInfo> => invoke('ext:install', id),
-  extInstallFolder: (): Promise<ExtensionInfo | null> => invoke('ext:install-folder'),
+  /** Choisir le dossier d'une extension : son manifeste est lu, rien n'est installé */
+  extPickFolder: (): Promise<{ folder: string; ext: ExtensionInfo } | null> => invoke('ext:pick-folder'),
+  /** link : mode développeur, relier le dossier au lieu de le copier */
+  extInstallPath: (folder: string, link?: boolean): Promise<ExtensionInfo> => invoke('ext:install-path', folder, link),
+  extFetch: (id: string, url: string, init: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array }): Promise<ExtensionFetchResult> =>
+    invoke('ext:fetch', id, url, init),
+  extStorage: (id: string): Promise<Record<string, unknown>> => invoke('ext:storage', id),
+  extStorageSet: (id: string, key: string, value: unknown): Promise<void> => invoke('ext:storage-set', id, key, value),
+  /** Partie Node.js : son port arrive par un message de la page ({ lumenNodePort: id }) */
+  extNodeStart: (id: string): Promise<void> => invoke('ext:node-start', id),
+  extNodeStop: (id: string): Promise<void> => invoke('ext:node-stop', id),
+  extDevtools: (): Promise<void> => invoke('ext:devtools'),
+  relaunch: (): Promise<void> => invoke('app:relaunch'),
   extUninstall: (id: string): Promise<void> => invoke('ext:uninstall', id),
   focusWindow: (): void => ipcRenderer.send('app:focus'),
   pendingOpen: (): Promise<string | null> => invoke('app:pending-open'),
@@ -178,3 +191,6 @@ const api = {
 export type Api = typeof api
 
 contextBridge.exposeInMainWorld('api', api)
+
+// Port de la partie Node.js d'une extension : un MessagePort ne passe pas par contextBridge, il est transmis à la page
+ipcRenderer.on('ext:node-port', (e, id: string) => window.postMessage({ lumenNodePort: id }, '*', e.ports))

@@ -8,6 +8,7 @@ import TableModal from './modals/TableModal'
 import ConvertModal from './modals/ConvertModal'
 import CollabModal from './modals/CollabModal'
 import WhatsNewModal from './modals/WhatsNewModal'
+import DialogModal from './modals/DialogModal'
 import { emit } from '../lib/bus'
 
 export function ModalFrame({
@@ -79,5 +80,7 @@ export default function Modals(): React.JSX.Element | null {
       return <CollabModal join={modal.join} />
     case 'whats-new':
       return <WhatsNewModal since={modal.since} />
+    case 'dialog':
+      return <DialogModal req={modal.req} resolve={modal.resolve} />
   }
 }

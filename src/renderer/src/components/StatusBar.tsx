@@ -1,5 +1,6 @@
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2, Lock } from 'lucide-react'
 import { store, useApp } from '../store'
+import { availabilityOf, compilerFor, languageOf } from '../lib/languages'
 import { kb } from '../lib/keys'
 import { collabMessage } from './modals/CollabModal'
 import { useUnreadChat } from './ActivityBar'
@@ -56,7 +57,10 @@ export default function StatusBar(): React.JSX.Element {
   const cursor = useApp((s) => s.cursor)
   const words = useApp((s) => s.wordCount)
   const active = useApp((s) => s.active)
-  const tectonic = useApp((s) => s.tectonic)
+  const mainFile = useApp((s) => s.mainFile)
+  useApp((s) => s.compilersVersion)
+  const extStatus = useApp((s) => s.extUi.status)
+  const devMode = useApp((s) => s.settings.extDevMode)
   const vim = useApp((s) => s.settings.vimMode)
   const errors = diagnostics.filter((d) => d.severity === 'error').length
   const warnings = diagnostics.filter((d) => d.severity === 'warning').length
@@ -87,7 +91,11 @@ export default function StatusBar(): React.JSX.Element {
   }
 
   const kind = active?.split('.').pop()?.toLowerCase()
-  const lang = kind === 'tex' ? 'LaTeX' : kind === 'bib' ? 'BibTeX' : kind === 'sty' || kind === 'cls' ? 'LaTeX (paquet)' : kind?.toUpperCase()
+  const lang = languageOf(active)?.name ?? kind?.toUpperCase()
+  // Compilateur du fichier principal (Tectonic, ou celui d'une extension)
+  const mainLang = languageOf(mainFile)
+  const compiler = mainLang && compilerFor(mainLang.id)
+  const compilerVersion = compiler && availabilityOf(compiler)?.version
 
   return (
     <footer className="statusbar">
@@ -110,6 +118,16 @@ export default function StatusBar(): React.JSX.Element {
         </button>
       </div>
       <div className="sb-right">
+        {devMode && (
+          <button className="sb-btn sb-dev" title="Mode développeur : toutes les extensions fonctionnent comme si elles étaient vérifiées" onClick={() => store.set({ panel: 'extensions' })}>
+            Mode développeur
+          </button>
+        )}
+        {extStatus.map((s) => (
+          <button key={s.key} className="sb-btn sb-item" title={s.tooltip} onClick={() => s.onClick?.()} disabled={!s.onClick}>
+            {s.text}
+          </button>
+        ))}
         <ReadOnly />
         <UpdateProgress />
         <CollabIndicator />
@@ -125,7 +143,12 @@ export default function StatusBar(): React.JSX.Element {
             <span className="sb-item">UTF-8</span>
           </>
         )}
-        {tectonic?.found && <span className="sb-item muted">Tectonic {tectonic.version}</span>}
+        {compiler && (
+          <span className="sb-item muted">
+            {compiler.name}
+            {compilerVersion ? ` ${compilerVersion}` : ''}
+          </span>
+        )}
       </div>
     </footer>
   )
