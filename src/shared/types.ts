@@ -45,6 +45,8 @@ export interface Settings {
   extMedia: Record<string, boolean>
   /** Compilateur choisi pour chaque langage (identifiant du langage → du compilateur) */
   compilers: Record<string, string>
+  /** Historique : une version gardée automatiquement toutes les 10 minutes au plus, quand le projet change */
+  historyAuto: boolean
   editorFontSize: number
   editorFontFamily: string
   lineWrapping: boolean
@@ -307,6 +309,18 @@ export interface ExtensionSetting {
   options: string[]
   default: string | number | boolean
   description: string
+}
+
+/** Une version gardée dans l'historique d'un projet */
+export interface HistoryVersion {
+  id: string
+  date: number
+  /** Nom donné par l'utilisateur (« Version envoyée au directeur ») ; absent : version automatique */
+  name?: string
+  /** Automatique : éclaircie avec le temps ; nommée : gardée jusqu'à sa suppression */
+  auto: boolean
+  /** Fichier (relatif au projet) → empreinte de son contenu */
+  files: Record<string, string>
 }
 
 /** Réponse d'une requête Internet faite pour une extension */

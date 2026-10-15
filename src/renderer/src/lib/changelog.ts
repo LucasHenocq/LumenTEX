@@ -6,6 +6,15 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.6.0',
+    date: '2026-10-15',
+    items: [
+      'Historique des versions (icône d’horloge dans la barre de gauche) : Lumen TeX garde une version de votre projet quand vous travaillez, toutes les 10 minutes au plus. Comparez un fichier avec une version précédente, ou restaurez-le : l’état actuel est gardé d’abord, vous pouvez toujours revenir en arrière.',
+      '« Enregistrer une version » garde l’état actuel sous un nom (« Version envoyée au directeur »…) : ces versions sont conservées jusqu’à ce que vous les supprimiez. Les versions automatiques s’espacent avec le temps.',
+      'L’historique est rangé dans le projet lui-même : il le suit si vous le copiez ou le synchronisez. « Nettoyer les fichiers de compilation » n’y touche pas.'
+    ]
+  },
+  {
     version: '1.5.2',
     date: '2026-10-14',
     items: [

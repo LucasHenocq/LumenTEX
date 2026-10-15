@@ -12,6 +12,7 @@ export const defaultSettings: Settings = {
   extSettings: {},
   extMedia: {},
   compilers: {},
+  historyAuto: true,
   editorFontSize: 14,
   editorFontFamily: '"SF Mono", "JetBrains Mono", Menlo, Monaco, monospace',
   lineWrapping: true,

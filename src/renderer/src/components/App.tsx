@@ -13,6 +13,7 @@ import { applyColorTheme, loadExtensions } from '../lib/extensions'
 import { resumeAfterReload, startExtensions } from '../lib/extHost'
 // Coches des preuves (crochets de l'éditeur)
 import '../lib/proofs'
+import '../lib/history'
 
 const api = window.api
 

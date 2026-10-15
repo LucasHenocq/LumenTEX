@@ -319,6 +319,7 @@ export async function saveFile(path: string): Promise<void> {
     markSaved(path)
     refreshDirty(path)
     updateContent(path, text)
+    emit('file:saved', path)
   } catch (e) {
     toast(`Échec de l’enregistrement de ${path} : ${(e as Error).message}`, 'error')
   }

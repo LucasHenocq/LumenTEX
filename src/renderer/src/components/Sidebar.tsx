@@ -6,6 +6,7 @@ import Copilot from './Copilot'
 import ChatPanel from './panels/ChatPanel'
 import ExtensionsPanel from './panels/ExtensionsPanel'
 import ExtPanelHost from './panels/ExtPanelHost'
+import HistoryPanel from './panels/HistoryPanel'
 import { useApp } from '../store'
 
 export default function Sidebar(): React.JSX.Element {
@@ -21,6 +22,7 @@ export default function Sidebar(): React.JSX.Element {
       {panel === 'outline' && <OutlinePanel />}
       {panel === 'symbols' && <SymbolsPanel />}
       {panel === 'search' && <SearchPanel />}
+      {panel === 'history' && <HistoryPanel />}
       {panel === 'chat' && <ChatPanel />}
       {panel === 'extensions' && <ExtensionsPanel />}
       {extPanel && panel === extPanel.key && <ExtPanelHost panel={extPanel} />}

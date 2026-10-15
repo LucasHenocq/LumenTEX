@@ -297,6 +297,9 @@ export default function SettingsModal(): React.JSX.Element {
           )}
           {section === 'editor' && (
             <>
+              <Row label="Historique automatique" hint="Une version gardée quand le projet change, toutes les 10 minutes au plus (panneau Historique)">
+                <Toggle value={s.historyAuto !== false} onChange={(v) => set({ historyAuto: v })} />
+              </Row>
               <Row label="Retour à la ligne automatique">
                 <Toggle value={s.lineWrapping} onChange={(v) => set({ lineWrapping: v })} />
               </Row>

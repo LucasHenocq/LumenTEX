@@ -8,6 +8,7 @@ import type {
   ConvertSource,
   ExtensionFetchResult,
   ExtensionInfo,
+  HistoryVersion,
   CompileResult,
   ContextMenuItem,
   FileEntry,
@@ -72,6 +73,14 @@ const api = {
   extNodeStop: (id: string): Promise<void> => invoke('ext:node-stop', id),
   extDevtools: (): Promise<void> => invoke('ext:devtools'),
   relaunch: (): Promise<void> => invoke('app:relaunch'),
+  historyList: (root: string): Promise<HistoryVersion[]> => invoke('history:list', root),
+  historySnapshot: (root: string, opts: { name?: string; auto: boolean; force?: boolean; extensions: string[] }): Promise<HistoryVersion | null> =>
+    invoke('history:snapshot', root, opts),
+  historyRead: (root: string, id: string, rel: string): Promise<string> => invoke('history:read', root, id, rel),
+  historyRestore: (root: string, id: string, paths: string[] | undefined, extensions: string[]): Promise<string[]> =>
+    invoke('history:restore', root, id, paths, extensions),
+  historyRename: (root: string, id: string, name: string): Promise<void> => invoke('history:rename', root, id, name),
+  historyDelete: (root: string, id: string): Promise<void> => invoke('history:delete', root, id),
   extUninstall: (id: string): Promise<void> => invoke('ext:uninstall', id),
   focusWindow: (): void => ipcRenderer.send('app:focus'),
   pendingOpen: (): Promise<string | null> => invoke('app:pending-open'),

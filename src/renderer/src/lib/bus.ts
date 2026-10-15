@@ -20,6 +20,8 @@ export interface BusEvents {
   /** Texte d'un document ouvert modifié ; fichiers du projet changés sur le disque */
   'doc:changed': string
   'fs:changed': string[]
+  /** Fichier enregistré sur le disque (historique des versions) */
+  'file:saved': string
 }
 
 export function on<K extends keyof BusEvents>(event: K, handler: (p: BusEvents[K]) => void): () => void {

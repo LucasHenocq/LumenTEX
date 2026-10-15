@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { LeanStep } from './lib/leanSteps'
 import type { ChatMessage, CollabNetStatus, CompileResult, Diagnostic, ExtensionInfo, FileEntry, LeanDiag, LeanProgress, LeanStatus, Settings, TectonicStatus, UserRight } from '../../shared/types'
 
-export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'chat' | 'extensions' | `ext:${string}`
+export type SidebarPanel = 'files' | 'outline' | 'symbols' | 'search' | 'history' | 'chat' | 'extensions' | `ext:${string}`
 
 export type Modal =
   | { type: 'new-project' }
@@ -16,6 +16,8 @@ export type Modal =
   | { type: 'collab'; join?: boolean }
   /** since : nouveautés installées depuis cette version ; absent : historique complet */
   | { type: 'whats-new'; since?: string }
+  /** Comparaison de deux textes (historique) : avant → après */
+  | { type: 'diff'; title: string; before: string; after: string; beforeLabel: string; afterLabel: string }
   /** Question au style de l'app (extensions, session) */
   | { type: 'dialog'; req: import('./lib/dialog').DialogRequest; resolve: (a: import('./lib/dialog').DialogAnswer) => void }
   | null
@@ -129,6 +131,8 @@ export interface AppState {
   extUi: { panels: ExtPanel[]; status: ExtStatusItem[]; commands: ExtCommand[] }
   /** Journal des extensions (messages et erreurs) */
   extLogs: ExtLog[]
+  /** L'historique des versions a changé (panneau à relire) */
+  historyVersion: number
 }
 
 export interface ExtPanel {
@@ -224,6 +228,7 @@ export const store = createStore<AppState>({
   compilersVersion: 0,
   extUi: { panels: [], status: [], commands: [] },
   extLogs: [],
+  historyVersion: 0,
   collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [], rules: NO_RULES }
 })
 

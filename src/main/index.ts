@@ -27,6 +27,7 @@ import { askOllama, ollamaStatus, pullOllamaModel, startOllama, stopOllama } fro
 import { buildDocs, docsStatus, userDocsDir } from './docs'
 import { dropGuestDirs, guestDir, isGuestDir, keepGuestCopy } from './collab'
 import { checkMacUpdate, installMacUpdate, type MacUpdate } from './macUpdate'
+import { deleteVersion, listVersions, readVersionFile, renameVersion, restoreVersion, snapshot } from './history'
 import { cleanCatalog, fetchCatalog, installedExtensions, installExtensionFolder, installFromCatalog, linkExtensionFolder, readExtension, uninstallExtension } from './extensions'
 import {
   dropExtensionStorage,
@@ -431,6 +432,13 @@ function registerIpc(): void {
     })
     return r.canceled ? null : r.filePaths[0]
   })
+  // --- Historique des versions ---
+  ipcMain.handle('history:list', (_e, root: string) => listVersions(root))
+  ipcMain.handle('history:snapshot', (_e, root: string, opts: Parameters<typeof snapshot>[1]) => snapshot(root, opts))
+  ipcMain.handle('history:read', (_e, root: string, id: string, rel: string) => readVersionFile(root, id, rel))
+  ipcMain.handle('history:restore', (_e, root: string, id: string, paths: string[] | undefined, extensions: string[]) => restoreVersion(root, id, paths, extensions))
+  ipcMain.handle('history:rename', (_e, root: string, id: string, name: string) => renameVersion(root, id, name))
+  ipcMain.handle('history:delete', (_e, root: string, id: string) => deleteVersion(root, id))
   // --- Extensions (sans code) ---
   ipcMain.handle('ext:list', () => installedExtensions())
   ipcMain.handle('ext:catalog', () => fetchCatalog().catch(() => null))
@@ -673,9 +681,10 @@ function registerIpc(): void {
   ipcMain.handle('compile:cancel', () => cancelCompile())
   ipcMain.handle('compile:paths', (_e, root: string, mainRel: string) => buildPaths(root, mainRel))
   ipcMain.handle('compile:clean', (_e, root: string) => {
-    // Sauf les preuves Lean du projet (.lumentex/lean)
+    // Sauf les preuves Lean (.lumentex/lean) et l'historique des versions (.lumentex/historique)
     const dir = path.join(root, BUILD_DIR)
-    for (const e of fs.existsSync(dir) ? fs.readdirSync(dir) : []) if (e !== 'lean') fs.rmSync(path.join(dir, e), { recursive: true, force: true })
+    for (const e of fs.existsSync(dir) ? fs.readdirSync(dir) : [])
+      if (e !== 'lean' && e !== 'historique') fs.rmSync(path.join(dir, e), { recursive: true, force: true })
     return true
   })
   // Bouton « Arrêter » du copilot : sa conversation seulement (une vérification Lean continue)

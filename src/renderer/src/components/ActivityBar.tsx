@@ -1,4 +1,4 @@
-import { Files, ListTree, MessageCircle, Puzzle, Search, Sigma, Command, CircleHelp } from 'lucide-react'
+import { Files, History, ListTree, MessageCircle, Puzzle, Search, Sigma, Command, CircleHelp } from 'lucide-react'
 import type { SidebarPanel } from '../store'
 import { store, updateSettings, useApp } from '../store'
 import { kb } from '../lib/keys'
@@ -8,6 +8,7 @@ const ITEMS: { id: SidebarPanel; icon: typeof Files; label: string }[] = [
   { id: 'outline', icon: ListTree, label: 'Plan du document (⌘2)' },
   { id: 'symbols', icon: Sigma, label: 'Symboles (⌘3)' },
   { id: 'search', icon: Search, label: 'Rechercher (⌘4)' },
+  { id: 'history', icon: History, label: 'Historique des versions' },
   { id: 'extensions', icon: Puzzle, label: 'Extensions' }
 ]
 
