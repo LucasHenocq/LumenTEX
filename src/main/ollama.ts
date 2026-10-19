@@ -15,7 +15,7 @@ const OLLAMA = 'http://127.0.0.1:11434'
 export const DEFAULT_OLLAMA_MODEL = 'gemma3:4b'
 const NUM_CTX = 16384
 
-const aborts = new Map<Lane, AbortController>()
+const aborts = new Map<string, AbortController>()
 
 function ollamaExe(): string | null {
   const exe = process.platform === 'win32' ? 'ollama.exe' : 'ollama'
@@ -106,7 +106,7 @@ async function docsFor(query: string): Promise<string> {
 type OllamaMessage = { role: string; content: string; images?: string[] }
 
 /** Discussion streamée ; abort permet l'arrêt par l'utilisateur */
-async function chat(messages: OllamaMessage[], onText: (t: string) => void, lane: Lane = 'chat'): Promise<void> {
+export async function chat(messages: OllamaMessage[], onText: (t: string) => void, lane: string = 'chat'): Promise<void> {
   aborts.get(lane)?.abort()
   const abort = new AbortController()
   aborts.set(lane, abort)
@@ -163,7 +163,7 @@ export async function convertOllama(prompt: string, images: string[], onText: (t
 }
 
 /** Arrête la conversation d'un couloir, ou toutes */
-export function stopOllama(lane?: Lane): void {
+export function stopOllama(lane?: string): void {
   for (const [l, a] of aborts) if (!lane || l === lane) a.abort()
 }
 

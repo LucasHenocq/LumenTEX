@@ -128,7 +128,7 @@ export interface AppState {
   /** Compilateurs enregistrés, ou leur disponibilité, ont changé (menus à redessiner) */
   compilersVersion: number
   /** Apports des extensions avec code : panneaux, éléments de la barre d'état, commandes */
-  extUi: { panels: ExtPanel[]; status: ExtStatusItem[]; commands: ExtCommand[] }
+  extUi: { panels: ExtPanel[]; status: ExtStatusItem[]; commands: ExtCommand[]; windows: ExtWindow[] }
   /** Journal des extensions (messages et erreurs) */
   extLogs: ExtLog[]
   /** L'historique des versions a changé (panneau à relire) */
@@ -143,6 +143,20 @@ export interface ExtPanel {
   icon: string
   /** Extension de confiance : élément dessiné par elle ; isolée : son cadre est le panneau */
   el: HTMLElement | null
+}
+/** Fenêtre flottante d'une extension, dans la fenêtre de Lumen TeX */
+export interface ExtWindow {
+  key: string
+  extId: string
+  title: string
+  width: number
+  height: number
+  /** Extension de confiance : élément dessiné par elle ; isolée : son cadre est posé dans la fenêtre */
+  el: HTMLElement | null
+  /** Ramenée devant (openWindow d'une fenêtre déjà ouverte) : la plus récente passe au premier plan */
+  raised: number
+  /** Fermeture (bouton ou closeWindow) */
+  close: () => void
 }
 export interface ExtStatusItem {
   key: string
@@ -226,7 +240,7 @@ export const store = createStore<AppState>({
   proofRun: null,
   extensions: [],
   compilersVersion: 0,
-  extUi: { panels: [], status: [], commands: [] },
+  extUi: { panels: [], status: [], commands: [], windows: [] },
   extLogs: [],
   historyVersion: 0,
   collab: { active: false, code: '', role: 'host', net: { state: 'off', peers: 0 }, joining: false, people: [], chat: [], events: [], tooBig: [], rules: NO_RULES }

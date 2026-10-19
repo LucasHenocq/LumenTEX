@@ -10,7 +10,8 @@ import type { CompletionContext, CompletionResult, CompletionSource } from '@cod
 import type { Extension } from '@codemirror/state'
 import type { Diagnostic, ExtensionInfo } from '../../../shared/types'
 import { editorContributions, getActivePath, getView, reconfigureAll, textOf } from '../editor/setup'
-import { store, toast, type ExtCommand, type ExtLog, type ExtPanel, type ExtStatusItem } from '../store'
+import { ENGINES } from '../components/Copilot'
+import { store, toast, updateSettings, type ExtCommand, type ExtLog, type ExtPanel, type ExtStatusItem, type ExtWindow } from '../store'
 import { compile, ensureMainFile, insertText, openFile, saveAll, setExtensionDiagnostics } from './actions'
 import { on } from './bus'
 import { runCommand } from './commands'
@@ -169,7 +170,7 @@ editorContributions.extensions = (path) =>
 // L'objet lumen
 // ---------------------------------------------------------------------------
 
-type ExtUi = { panels: ExtPanel[]; status: ExtStatusItem[]; commands: ExtCommand[] }
+type ExtUi = { panels: ExtPanel[]; status: ExtStatusItem[]; commands: ExtCommand[]; windows: ExtWindow[] }
 const setUi = (fn: (ui: ExtUi) => Partial<ExtUi>): void => store.set((s) => ({ extUi: { ...s.extUi, ...fn(s.extUi) } }))
 
 function publishDiagnostics(): void {
@@ -228,6 +229,37 @@ function makeApi(r: Running): Record<string, unknown> {
       })
     },
     openPanel: (id: string) => store.set({ panel: `ext:${ext.id}:${id}` }),
+    /** Fenêtre flottante ; déjà ouverte : ramenée devant. Isolée : une seule, sa page y est posée */
+    openWindow: (def: { id: string; title: string; width?: number; height?: number; onClose?: Fn }, render?: (el: HTMLElement) => void) => {
+      const key = `${ext.id}:${def.id}`
+      const open = store.get().extUi.windows
+      if (open.some((w) => w.key === key)) return void setUi((u) => ({ windows: u.windows.map((w) => (w.key === key ? { ...w, raised: Date.now() } : w)) }))
+      if (!r.trusted) for (const w of open.filter((x) => x.extId === ext.id)) w.close()
+      let el: HTMLElement | null = null
+      if (r.trusted) {
+        el = document.createElement('div')
+        el.className = 'ext-window-root'
+        if (render) void guard(r, () => render(el!))
+      }
+      const size = (v: unknown, d: number): number => (typeof v === 'number' && v > 0 ? Math.min(v, 2000) : d)
+      const win: ExtWindow = {
+        key,
+        extId: ext.id,
+        title: String(def.title ?? ext.name),
+        width: size(def.width, 480),
+        height: size(def.height, 360),
+        el,
+        raised: Date.now(),
+        close: () => {
+          if (!store.get().extUi.windows.some((w) => w.key === key)) return
+          setUi((u) => ({ windows: u.windows.filter((w) => w.key !== key) }))
+          if (def.onClose) void guard(r, def.onClose)
+        }
+      }
+      setUi((u) => ({ windows: [...u.windows, win] }))
+      add(() => setUi((u) => ({ windows: u.windows.filter((w) => w.key !== key) })))
+    },
+    closeWindow: (id: string) => store.get().extUi.windows.find((w) => w.key === `${ext.id}:${id}`)?.close(),
     setStatus: (id: string, item: { text: string; tooltip?: string; onClick?: Fn }) => {
       const key = `${ext.id}:${id}`
       const s: ExtStatusItem = {
@@ -412,6 +444,36 @@ function makeApi(r: Running): Record<string, unknown> {
     }
   }
 
+  // IA de l'utilisateur : chaque requête passe par son accord (réglage tenu par Lumen TeX, hors de portée de l'extension)
+  const ai = {
+    available: async () => {
+      const engine = store.get().settings.aiEngine
+      const st = await window.api.aiStatus(engine)
+      return { ready: st.installed && st.loggedIn, engine: ENGINES[engine].name }
+    },
+    ask: async (prompt: string, opts?: { system?: string; onText?: Fn }) => {
+      const q = String(prompt ?? '')
+      if (!q.trim()) throw new Error('Question vide')
+      if (!(await ai.available()).ready) throw new Error('Aucune IA n’est prête : choisissez et connectez une IA dans le panneau de l’assistant.')
+      await allowAi(r, q)
+      const reqId = ++aiSeq
+      let answer = ''
+      const off = window.api.onExtAiChunk((id, t) => {
+        if (id !== reqId) return
+        answer += t
+        if (opts?.onText) void guard(r, () => opts.onText!(t, answer))
+      })
+      try {
+        await window.api.extAi(reqId, ext.id, q, String(opts?.system ?? ''))
+      } finally {
+        off()
+      }
+      return answer
+    },
+    stop: () => window.api.extAiStop(ext.id)
+  }
+  add(() => void window.api.extAiStop(ext.id))
+
   const settingValue = (key: string): unknown =>
     store.get().settings.extSettings?.[ext.id]?.[key] ?? ext.settings.find((s) => s.id === key)?.default
   const settings = {
@@ -448,6 +510,7 @@ function makeApi(r: Running): Record<string, unknown> {
     session,
     settings,
     storage,
+    ai,
     log: (...args: unknown[]) => extLog(ext.id, 'log', args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '))
   }
 
@@ -494,6 +557,24 @@ function makeApi(r: Running): Record<string, unknown> {
     on: (name: string, fn: Fn) => listen(r, `node.${name}`, fn)
   }
   return withCleanErrors(api)
+}
+
+let aiSeq = 0
+
+/** Accord de l'utilisateur pour une requête à l'IA ; la case apparaît dans les réglages de l'extension dès la première */
+async function allowAi(r: Running, question: string): Promise<void> {
+  const all = store.get().settings.extAi ?? {}
+  if (all[r.ext.id]) return
+  if (!(r.ext.id in all)) await updateSettings({ extAi: { ...all, [r.ext.id]: false } })
+  const engine = ENGINES[store.get().settings.aiEngine].name
+  const a = await ask({
+    title: r.ext.name,
+    message: `L’extension « ${r.ext.name} » veut poser cette question à votre IA (${engine}) :`,
+    detail: `${question.length > 700 ? `${question.slice(0, 700)}…` : question}\n\nVous pouvez la laisser faire sans demander dans les réglages de l’extension.`,
+    buttons: ['Refuser', 'Toujours autoriser', 'Autoriser']
+  })
+  if (a.button === 1) await updateSettings({ extAi: { ...(store.get().settings.extAi ?? {}), [r.ext.id]: true } })
+  else if (a.button !== 2) throw new Error('Requête à l’IA refusée par l’utilisateur')
 }
 
 /** Erreurs rendues aux extensions : messages lisibles, sans le préfixe d'Electron (CodeMirror laissé tel quel) */

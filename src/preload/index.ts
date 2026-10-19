@@ -66,6 +66,9 @@ const api = {
   extInstallPath: (folder: string, link?: boolean): Promise<ExtensionInfo> => invoke('ext:install-path', folder, link),
   extFetch: (id: string, url: string, init: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array }): Promise<ExtensionFetchResult> =>
     invoke('ext:fetch', id, url, init),
+  extAi: (reqId: number, id: string, prompt: string, system: string): Promise<void> => invoke('ext:ai', reqId, id, prompt, system),
+  extAiStop: (id: string): Promise<void> => invoke('ext:ai-stop', id),
+  onExtAiChunk: (cb: (reqId: number, text: string) => void) => on<[number, string]>('ext:ai-chunk', cb),
   extStorage: (id: string): Promise<Record<string, unknown>> => invoke('ext:storage', id),
   extStorageSet: (id: string, key: string, value: unknown): Promise<void> => invoke('ext:storage-set', id, key, value),
   /** Partie Node.js : son port arrive par un message de la page ({ lumenNodePort: id }) */

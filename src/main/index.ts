@@ -42,6 +42,7 @@ import {
   stopNodePart
 } from './extRuntime'
 import { collabStatus, newCode, normalizeCode, sendCollab, startCollab, stopCollab } from './collab'
+import { extensionAiStop, extensionAsk } from './extAi'
 import { discard, discardAll, prepareData, prepareFile, runConvert, stopConvert } from './convert'
 
 app.setName('Lumen TeX')
@@ -463,6 +464,11 @@ function registerIpc(): void {
     return link && getSettings().extDevMode ? linkExtensionFolder(folder) : installExtensionFolder(folder)
   })
   ipcMain.handle('ext:fetch', (_e, id: string, url: string, init: Parameters<typeof extensionFetch>[2]) => extensionFetch(id, url, init))
+  // IA pour une extension (accord de l'utilisateur déjà demandé par la fenêtre) : moteur choisi dans les réglages
+  ipcMain.handle('ext:ai', (_e, reqId: number, id: string, prompt: string, system: string) =>
+    extensionAsk(reqId, id, getSettings().aiEngine, String(prompt), String(system ?? ''), (t) => send('ext:ai-chunk', reqId, t))
+  )
+  ipcMain.handle('ext:ai-stop', (_e, id: string) => extensionAiStop(id))
   ipcMain.handle('ext:storage', (_e, id: string) => extensionStorage(id))
   ipcMain.handle('ext:storage-set', (_e, id: string, key: string, value: unknown) => setExtensionStorage(id, key, value))
   ipcMain.handle('ext:node-start', (_e, id: string) => startNodePart(id, win!))

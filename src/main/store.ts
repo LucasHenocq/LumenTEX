@@ -11,6 +11,7 @@ export const defaultSettings: Settings = {
   extDisabled: [],
   extSettings: {},
   extMedia: {},
+  extAi: {},
   compilers: {},
   historyAuto: true,
   editorFontSize: 14,

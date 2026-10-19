@@ -3201,6 +3201,55 @@ button.settings-version:hover {
 .ext-panel-root {
   padding: 10px 12px;
 }
+.ext-panel-elsewhere {
+  padding: 16px 12px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+/* Fenêtres des extensions : sous les fenêtres de dialogue (100) */
+.ext-window {
+  position: fixed;
+  min-width: 220px;
+  min-height: 120px;
+  resize: both;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.ext-window-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+}
+.ext-window-head:active {
+  cursor: grabbing;
+}
+.ext-window-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ext-window-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.ext-window-root {
+  padding: 10px 12px;
+}
 #ext-frames iframe.ext-frame {
   position: fixed;
   display: none;

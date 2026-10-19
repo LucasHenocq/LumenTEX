@@ -6,6 +6,15 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.7.0',
+    date: '2026-10-20',
+    items: [
+      'Les extensions peuvent poser des questions à votre IA (celle choisie pour l’assistant : Claude, Copilot, Gemini ou Ollama). Chaque question vous est d’abord montrée, et vous l’acceptez ou la refusez. Pour laisser une extension faire sans demander, cochez « Utiliser l’IA sans demander » dans ses réglages : cette case est gérée par Lumen TeX, pas par l’extension.',
+      'L’IA interrogée par une extension ne voit pas votre projet et ne peut rien y modifier : elle répond seulement à la question.',
+      'Les extensions peuvent ouvrir leurs propres fenêtres dans Lumen TeX : déplacez-les, agrandissez-les ou fermez-les, elles retrouvent leur place à la réouverture.'
+    ]
+  },
+  {
     version: '1.6.0',
     date: '2026-10-15',
     items: [

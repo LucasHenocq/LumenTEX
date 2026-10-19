@@ -1,17 +1,20 @@
 import { useEffect, useRef } from 'react'
 import { frameOf } from '../../lib/extHost'
-import type { ExtPanel } from '../../store'
+import { useApp, type ExtPanel } from '../../store'
 
 /**
  * Panneau d'une extension. De confiance : son élément (dessiné par elle, gardé d'une ouverture à l'autre) est placé ici.
- * Isolée : son cadre, qui vit en dehors de l'arbre React (le déplacer le rechargerait), est posé au-dessus de cette zone.
+ * Isolée : son cadre, qui vit en dehors de l'arbre React (le déplacer le rechargerait), est posé au-dessus de cette zone,
+ * sauf s'il est dans une fenêtre de l'extension (un seul cadre, une seule place).
  */
 export default function ExtPanelHost({ panel }: { panel: ExtPanel }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
+  const inWindow = useApp((s) => !panel.el && s.extUi.windows.some((w) => w.extId === panel.extId))
 
   useEffect(() => {
     const zone = ref.current
     if (!zone) return
+    if (inWindow) return
     if (panel.el) {
       zone.appendChild(panel.el)
       return () => panel.el?.remove()
@@ -31,14 +34,16 @@ export default function ExtPanelHost({ panel }: { panel: ExtPanel }): React.JSX.
       window.removeEventListener('resize', place)
       frame.style.display = 'none'
     }
-  }, [panel])
+  }, [panel, inWindow])
 
   return (
     <div className="panel">
       <div className="panel-header">
         <span className="panel-title">{panel.title}</span>
       </div>
-      <div className="panel-body ext-panel-zone" ref={ref} />
+      <div className="panel-body ext-panel-zone" ref={ref}>
+        {inWindow && <div className="ext-panel-elsewhere">Ouvert dans une fenêtre</div>}
+      </div>
     </div>
   )
 }

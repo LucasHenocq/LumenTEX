@@ -43,6 +43,8 @@ export interface Settings {
   extSettings: Record<string, Record<string, unknown>>
   /** Micro et caméra : réponse de l'utilisateur pour chaque extension non vérifiée */
   extMedia: Record<string, boolean>
+  /** IA : extensions qui l'ont demandée ; true = sans demander, false = demander à chaque requête */
+  extAi: Record<string, boolean>
   /** Compilateur choisi pour chaque langage (identifiant du langage → du compilateur) */
   compilers: Record<string, string>
   /** Historique : une version gardée automatiquement toutes les 10 minutes au plus, quand le projet change */

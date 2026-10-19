@@ -101,6 +101,7 @@ function Switch({ value, onChange, title }: { value: boolean; onChange: (v: bool
 function ExtensionSettings({ e }: { e: ExtensionInfo }): React.JSX.Element {
   const values = useApp((s) => s.settings.extSettings?.[e.id]) ?? {}
   const media = useApp((s) => s.settings.extMedia?.[e.id])
+  const ai = useApp((s) => s.settings.extAi?.[e.id])
   const set = (id: string, v: unknown): void => {
     const all = store.get().settings.extSettings ?? {}
     void updateSettings({ extSettings: { ...all, [e.id]: { ...(all[e.id] ?? {}), [id]: v } } })
@@ -134,6 +135,15 @@ function ExtensionSettings({ e }: { e: ExtensionInfo }): React.JSX.Element {
           </label>
         )
       })}
+      {ai !== undefined && (
+        <label className="ext-setting">
+          <span>
+            Utiliser l’IA sans demander
+            <small>Réglage de Lumen TeX : sinon, chaque question de l’extension à votre IA vous est d’abord montrée.</small>
+          </span>
+          <Switch value={ai} onChange={(x) => void updateSettings({ extAi: { ...(store.get().settings.extAi ?? {}), [e.id]: x } })} />
+        </label>
+      )}
       {media !== undefined && (
         <div className="ext-setting">
           <span>Micro et caméra : {media ? 'autorisés' : 'refusés'}</span>
@@ -155,6 +165,7 @@ function ExtensionSettings({ e }: { e: ExtensionInfo }): React.JSX.Element {
 function ExtensionCard({ e, children, installed }: { e: ExtensionInfo; children: React.ReactNode; installed?: boolean }): React.JSX.Element {
   const disabled = useApp((s) => s.settings.extDisabled?.includes(e.id))
   const media = useApp((s) => s.settings.extMedia?.[e.id])
+  const ai = useApp((s) => s.settings.extAi?.[e.id])
   const [open, setOpen] = useState(false)
   const toggle = async (on: boolean): Promise<void> => {
     const off = store.get().settings.extDisabled ?? []
@@ -184,7 +195,7 @@ function ExtensionCard({ e, children, installed }: { e: ExtensionInfo; children:
       </div>
       <div className="ext-actions">
         {installed && e.compatible && <Switch value={!disabled} onChange={(v) => void toggle(v)} title={disabled ? 'Activer' : 'Désactiver'} />}
-        {installed && (e.settings.length > 0 || media !== undefined) && (
+        {installed && (e.settings.length > 0 || media !== undefined || ai !== undefined) && (
           <button className={`btn small${open ? ' active' : ''}`} onClick={() => setOpen(!open)} title="Réglages de l’extension">
             <Settings2 size={13} />
           </button>

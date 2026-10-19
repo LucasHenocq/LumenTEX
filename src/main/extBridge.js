@@ -73,6 +73,7 @@ function makeLumen(init) {
     session: ns('session'),
     settings: ns('settings'),
     storage: ns('storage'),
+    ai: ns('ai'),
     log: (...args) => post({ t: 'log', level: 'log', args: text(args) }),
     /** Internet, limité aux sites déclarés dans le manifeste */
     fetch: async (url, init = {}) => {
@@ -101,7 +102,14 @@ function makeLumen(init) {
               render?.(document.body)
               return p
             }
-          : ui[k]
+          : k === 'openWindow'
+            ? // Sa fenêtre aussi : la page y est posée (pas en même temps que le panneau)
+              (def, render) => {
+                const p = call('ui.openWindow', [{ ...def }])
+                render?.(document.body)
+                return p
+              }
+            : ui[k]
     }
   )
   return lumen
