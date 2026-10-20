@@ -12,7 +12,7 @@ import type { Diagnostic, ExtensionInfo } from '../../../shared/types'
 import { editorContributions, getActivePath, getView, reconfigureAll, textOf } from '../editor/setup'
 import { ENGINES } from '../components/Copilot'
 import { store, toast, updateSettings, type ExtCommand, type ExtLog, type ExtPanel, type ExtStatusItem, type ExtWindow } from '../store'
-import { compile, ensureMainFile, insertText, openFile, saveAll, setExtensionDiagnostics } from './actions'
+import { compile, ensureMainFile, IMAGE_FILE, insertText, isTextFile, openFile, saveAll, setExtensionDiagnostics } from './actions'
 import { on } from './bus'
 import { runCommand } from './commands'
 import { collabMe, collabPeople, joinSession, onExtensionMessage, sendExtensionMessage, setDevExtensions } from './collab'
@@ -309,7 +309,12 @@ function makeApi(r: Running): Record<string, unknown> {
       if (!v) throw new Error('Aucun fichier ouvert')
       v.dispatch({ changes: { from: Number(from), to: Number(to), insert: String(text) } })
     },
-    goto: (path: string, line?: number) => openFile(rel(path), line ? { line: Number(line) } : undefined),
+    goto: (path: string, line?: number) => {
+      const p = rel(path)
+      // Ouvert dans Lumen TeX seulement : un autre fichier partirait vers son programme (un .bat y serait lancé)
+      if (!isTextFile(p) && !IMAGE_FILE.test(p)) throw new Error(`${p} : seuls les fichiers texte et les images s’ouvrent dans l’éditeur`)
+      return openFile(p, line ? { line: Number(line) } : undefined)
+    },
     onChange: (fn: Fn) => listen(r, 'editor.change', fn),
     onActiveChange: (fn: Fn) => listen(r, 'editor.active', fn)
   }

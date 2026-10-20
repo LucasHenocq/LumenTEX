@@ -6,6 +6,14 @@ import { store, updateSettings } from '../store'
  */
 export const CHANGELOG: { version: string; date: string; items: string[] }[] = [
   {
+    version: '1.7.1',
+    date: '2026-10-20',
+    items: [
+      'Correctif de sécurité : une extension ne peut plus faire lancer un programme de votre ordinateur en le faisant « ouvrir » par Lumen TeX. Elle n’ouvre plus que des fichiers texte et des images, dans l’éditeur, et seul un vrai PDF part vers votre lecteur PDF.',
+      'Nouvelle extension « Manim » dans le catalogue : votre IA anime une preuve étape par étape, en vidéo.'
+    ]
+  },
+  {
     version: '1.7.0',
     date: '2026-10-20',
     items: [

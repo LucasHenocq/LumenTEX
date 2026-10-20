@@ -69,6 +69,7 @@ Réglages → Extensions, ou l'icône de pièce de puzzle dans la barre de gauch
 - **Typst** : écrivez en Typst, avec coloration, autocomplétion, compilation et symboles ;
 - **LaTeX classique** : compilez avec pdfLaTeX, XeLaTeX, LuaLaTeX ou Latexmk, si TeX Live ou MiKTeX est installé, bibliographie biber ou BibTeX comprise ;
 - **LanguageTool** : fautes d'orthographe, de grammaire et de style soulignées, sans toucher aux commandes ni aux formules ;
+- **Manim** : votre IA anime une preuve étape par étape, en vidéo ;
 - **TikZ et pgfplots** : figures, repères, courbes et graphes de fonctions tout prêts ;
 - **Thèmes Nord et Solarized**, en clair et en sombre.
 

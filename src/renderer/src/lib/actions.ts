@@ -564,7 +564,11 @@ async function toResult(out: CompileResult | CompileOutput, root: string, mainFi
     const rel = `.lumentex/${basename(mainFile).replace(/\.[^.]+$/, '')}.pdf`
     await api.writeBinary(root, rel, out.pdf)
     pdfPath = `${root}/${rel}`
-  } else if (typeof out.pdf === 'string' && out.pdf) pdfPath = /^([a-zA-Z]:|\/)/.test(out.pdf) ? out.pdf : `${root}/${out.pdf}`
+  } else if (typeof out.pdf === 'string' && out.pdf) {
+    // Seulement un PDF : ce chemin peut être ouvert dans le lecteur du système (un .bat y serait lancé)
+    if (!/\.pdf$/i.test(out.pdf)) throw new Error(`Le compilateur a rendu « ${out.pdf} », qui n’est pas un PDF`)
+    pdfPath = /^([a-zA-Z]:|\/)/.test(out.pdf) ? out.pdf : `${root}/${out.pdf}`
+  }
   return {
     ok: out.ok ?? (!!pdfPath && !out.error),
     pdfPath,
@@ -677,7 +681,7 @@ export async function exportPdf(): Promise<void> {
 
 export function openPdfExternal(): void {
   const { pdf } = store.get()
-  if (pdf) void api.openExternal(pdf.path)
+  if (pdf && /\.pdf$/i.test(pdf.path)) void api.openExternal(pdf.path)
 }
 
 // ---------------------------------------------------------------------------
